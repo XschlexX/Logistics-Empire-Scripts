@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         LEA Upgrade Search and Accept
 // @namespace    le-tools
-// @version      1.2.0
+// @version      1.2.2
 // @match        https://game.logistics-empire.com/*
 // @description  Sucht Gebaeude mit verfuegbaren Upgrades und klickt sie an. Bestaetigt Upgrade-Dialoge automatisch.
 // @run-at       document-idle
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/main/lea-upgrade-search-and-accept.user.js
+// @downloadURL  https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/main/lea-upgrade-search-and-accept.user.js
 // ==/UserScript==
 
 (function () {

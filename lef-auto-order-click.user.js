@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         LEF Auto Assistant Click
 // @namespace    le-tools
-// @version      1.2.0
+// @version      1.2.3
 // @match        https://game.logistics-empire.com/*
 // @description  Automatischer Assistent. Mit Pause-Button und Lieferzeit-Warnung (>3 Min).
 // @run-at       document-idle
 // @grant        none
-// @updateURL    https://gist.github.com/XschlexX/2e949c82964837ede6e5d5ed6109ef99/raw/lef-auto-order-click.user.js
-// @downloadURL  https://gist.github.com/XschlexX/2e949c82964837ede6e5d5ed6109ef99/raw/lef-auto-order-click.user.js
+// @updateURL    https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/main/lef-auto-order-click.user.js
+// @downloadURL  https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/main/lef-auto-order-click.user.js
 // ==/UserScript==
 
 (function () {
