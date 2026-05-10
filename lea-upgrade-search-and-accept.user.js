@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LEA Upgrade Search and Accept
 // @namespace    le-tools
-// @version      1.2.2
+// @version      1.2.3
 // @match        https://game.logistics-empire.com/*
 // @description  Sucht Gebaeude mit verfuegbaren Upgrades und klickt sie an. Bestaetigt Upgrade-Dialoge automatisch.
 // @run-at       document-idle
@@ -161,6 +161,28 @@
     }
 
     // -----------------------------------------------------------------------
+    // SCHRITT 2.8: Globale Ausbauen-Buttons (z.B. "Parkplatz Ausbauen") klicken
+    // -----------------------------------------------------------------------
+    let lastExpandClickTime = 0;
+    const EXPAND_CLICK_COOLDOWN_MS = 1500;
+
+    function clickExpandButtons() {
+        if (document.querySelector(DIALOG_SELECTOR)) return;
+        if (Date.now() - lastExpandClickTime < EXPAND_CLICK_COOLDOWN_MS) return;
+
+        const expandBtns = Array.from(document.querySelectorAll('button.variant--normal')).filter(btn => {
+            const txt = btn.querySelector('.text-font-dark');
+            return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
+        });
+
+        if (expandBtns.length > 0) {
+            console.log('[LEA Upgrade] Ausbauen-Button gefunden, klicke...');
+            expandBtns[0].click();
+            lastExpandClickTime = Date.now();
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // SCHRITT 3: Zurueck-Button klicken wenn keine Upgrades mehr moeglich
     // Fall 1: Linien-Konfiguration offen, aber keine gelben Buttons mehr
     //         → Zurueck zur Gebaeude-Detailansicht
@@ -173,7 +195,7 @@
     // -----------------------------------------------------------------------
     const BACK_BTN_SELECTOR = '.bottom-navigation button[show-divider]';
     let lastBackClickTime = 0;
-    const BACK_CLICK_COOLDOWN_MS = 2500;
+    const BACK_CLICK_COOLDOWN_MS = 1500;
 
     function clickBackWhenDone() {
         // Nicht handeln wenn Dialog offen ist
@@ -202,19 +224,75 @@
             return;
         }
 
-        // Fall 2: Gebaeude-Detailansicht – kein Zahnrad mit Upgrade-Pfeil mehr
+        // Fall 2: Gebaeude-Detailansicht – keine Upgrades mehr sichtbar
         const settingsBtns = document.querySelectorAll(SETTINGS_BTN_SELECTOR);
-        if (settingsBtns.length > 0) {
-            const hasUpgradeGear = Array.from(settingsBtns).some(
-                btn => btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`)
-            );
-            if (!hasUpgradeGear) {
-                console.log('[LEA Upgrade] Kein weiteres Zahnrad-Upgrade, klicke Zurueck zur Liste...');
-                backBtn.click();
-                lastBackClickTime = Date.now();
-                scriptNavigatedToBuilding = false; // Zurueck in der Liste: Flag zuruecksetzen
+        const hasUpgradeGear = Array.from(settingsBtns).some(
+            btn => btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`)
+        );
+
+        // NEU: Pruefen ob es noch einen aktiven "Ausbauen" Button gibt
+        const expandBtns = Array.from(document.querySelectorAll('button.variant--normal')).filter(btn => {
+            const txt = btn.querySelector('.text-font-dark');
+            return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
+        });
+
+        if (!hasUpgradeGear && expandBtns.length === 0) {
+            // Bevor wir Zurueck gehen, pruefen wir ob ein anderer Reiter (Lager, LKW) ein Upgrade hat
+            const navTabsWithUpgrade = document.querySelectorAll('.bottom-navigation a button img[src*="improvement_arrow"]');
+
+            for (const img of navTabsWithUpgrade) {
+                const tabBtn = img.closest('button');
+                // Nur inaktive Reiter anklicken, um Endlosschleifen im aktiven Reiter zu vermeiden
+                if (tabBtn && tabBtn.getAttribute('active') !== 'true') {
+                    console.log('[LEA Upgrade] Upgrade in anderem Reiter gefunden, wechsle Ansicht...');
+                    tabBtn.click();
+                    lastBackClickTime = Date.now();
+                    return;
+                }
             }
+
+            // Weder hier noch in einem anderen Reiter gibt es was zu tun -> Zurueck zur Liste
+            console.log('[LEA Upgrade] Kein weiteres Upgrade im Gebaeude, klicke Zurueck zur Liste...');
+            backBtn.click();
+            lastBackClickTime = Date.now();
+            scriptNavigatedToBuilding = false; // Zurueck in der Liste: Flag zuruecksetzen
         }
+    }
+
+    function showToast(msg) {
+        const existing = document.getElementById('lea-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'lea-toast';
+        toast.textContent = msg;
+        toast.style.position = 'fixed';
+        toast.style.top = '50%';
+        toast.style.left = '50%';
+        toast.style.transform = 'translate(-50%, -50%)';
+        toast.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+        toast.style.color = '#fff';
+        toast.style.padding = '20px 40px';
+        toast.style.borderRadius = '12px';
+        toast.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+        toast.style.zIndex = '9999';
+        toast.style.fontSize = '20px';
+        toast.style.fontWeight = 'bold';
+        toast.style.textAlign = 'center';
+        toast.style.pointerEvents = 'none';
+        toast.style.transition = 'opacity 0.3s ease-in-out';
+
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            const el = document.getElementById('lea-toast');
+            if (el) {
+                el.style.opacity = '0';
+                setTimeout(() => {
+                    if (document.getElementById('lea-toast') === el) el.remove();
+                }, 300);
+            }
+        }, 2000);
     }
 
     // -----------------------------------------------------------------------
@@ -246,19 +324,51 @@
         const btn = document.createElement('button');
         btn.id = INJECT_BTN_ID;
         btn.type = 'button';
-        btn.className = 'bb-base-button variant--neutral size--md shape--square content--icon theme--light';
+        btn.className = 'bb-base-button variant--neutral size--md theme--light';
         btn.title = 'Naechstes verfuegbares Upgrade anklicken';
         btn.style.marginRight = '8px';
+        btn.style.padding = '0 12px';
 
         const inner = document.createElement('div');
         inner.className = 'relative flex size-full items-center justify-center';
-        inner.style.fontSize = '16px';
-        inner.textContent = 'UP';
+        inner.style.fontSize = '12px';
+        inner.style.fontWeight = 'bold';
+        inner.style.whiteSpace = 'pre-line';
+        inner.style.textAlign = 'center';
+        inner.style.lineHeight = '1.1';
+        inner.textContent = 'Auto\nUpgrade';
         btn.appendChild(inner);
 
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            clickNextAvailableUpgrade();
+
+            // Finde eine sichtbare Gebaeude-Karte als Ankerpunkt
+            const anchorCard = document.querySelector('[class*="building-card"]');
+            if (anchorCard) {
+                // Finde den scrollbaren Container, in dem die Karten liegen
+                let scrollContainer = anchorCard.parentElement;
+                while (scrollContainer && scrollContainer !== document.body) {
+                    const style = window.getComputedStyle(scrollContainer);
+                    if (style.overflowY === 'auto' || style.overflowY === 'scroll' || scrollContainer.classList.contains('scroll')) {
+                        console.log('[LEA Upgrade] Scrolle Liste nach oben, um virtuelle Elemente zu laden...');
+                        scrollContainer.scrollTop = 0;
+                        break;
+                    }
+                    scrollContainer = scrollContainer.parentElement;
+                }
+
+                // 300ms warten, damit das Framework (Virtual Scrolling) die oberen HTML-Elemente rendern kann
+                setTimeout(() => {
+                    if (!clickNextAvailableUpgrade()) {
+                        showToast('Kein weiteres Upgrade verfügbar!');
+                    }
+                }, 300);
+            } else {
+                // Fallback, falls gerade gar keine Karte gefunden wurde
+                if (!clickNextAvailableUpgrade()) {
+                    showToast('Keine Upgrades gefunden!');
+                }
+            }
         });
 
         // Button vor dem Such-Container einfuegen
@@ -270,12 +380,33 @@
     // INIT
     // -----------------------------------------------------------------------
     function init() {
-        console.log('[LEA Upgrade Search and Accept] Initialisiert v1.2.0');
-        setInterval(injectScanButton, 1000);             // Toolbar-Button bei Bedarf einfuegen
-        setInterval(scanDialogs, 500);                   // Upgrade-Dialoge automatisch bestaetigen
-        setInterval(clickUpgradeInBuilding, 500);        // Zahnrad mit Upgrade-Pfeil klicken
-        setInterval(clickImprovementArrowButtons, 700);  // Gelbe Pfeil-Buttons in Linien-Konfiguration
-        setInterval(clickBackWhenDone, 1000);            // Zurueck wenn keine Upgrades mehr in dieser Ansicht
+        console.log('[LEA Upgrade Search and Accept] Initialisiert v1.2.0 (mit MutationObserver)');
+
+        // Einmaliger initialer Durchlauf beim Start
+        injectScanButton();
+        scanDialogs();
+        clickUpgradeInBuilding();
+        clickImprovementArrowButtons();
+        clickExpandButtons();
+        clickBackWhenDone();
+
+        let isHandlingMutations = false;
+        const observer = new MutationObserver(() => {
+            if (!isHandlingMutations) {
+                isHandlingMutations = true;
+                requestAnimationFrame(() => {
+                    injectScanButton();
+                    scanDialogs();
+                    clickUpgradeInBuilding();
+                    clickImprovementArrowButtons();
+                    clickExpandButtons();
+                    clickBackWhenDone();
+                    isHandlingMutations = false;
+                });
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
     }
 
     if (document.readyState === 'loading') {
