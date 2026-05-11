@@ -70,7 +70,10 @@
     // SCHRITT 2: Upgrade-Dialog automatisch bestaetigen
     // -----------------------------------------------------------------------
     function acceptUpgradeDialog(dialog) {
-        if (!dialog || dialog.getAttribute(MARK_ATTR) === '1') return;
+        if (!dialog) return;
+
+        const lastMark = dialog.getAttribute(MARK_ATTR);
+        if (lastMark && (Date.now() - parseInt(lastMark) < 3000)) return;
 
         const titleEl = dialog.querySelector(TITLE_SELECTOR);
         if (!titleEl) return;
@@ -86,9 +89,9 @@
             }
         });
 
-        if (!targetBtn) return;
+        if (!targetBtn || targetBtn.hasAttribute('disabled')) return;
 
-        dialog.setAttribute(MARK_ATTR, '1');
+        dialog.setAttribute(MARK_ATTR, Date.now().toString());
         console.log('[LEA Upgrade] Upgrade-Dialog erkannt, klicke Bestaetigen...');
         try {
             targetBtn.click();
@@ -117,8 +120,8 @@
         const settingsBtns = document.querySelectorAll(SETTINGS_BTN_SELECTOR);
 
         for (const btn of settingsBtns) {
-            // Pruefen ob dieser Button den gruenen Upgrade-Pfeil als Overlay hat
-            if (btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`)) {
+            // Pruefen ob dieser Button den gruenen Upgrade-Pfeil als Overlay hat und sichtbar ist
+            if (btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`) && btn.getBoundingClientRect().width > 0) {
                 console.log('[LEA Upgrade] Zahnrad mit Upgrade-Pfeil gefunden, klicke...');
                 btn.click();
                 lastBuildingClickTime = Date.now();
@@ -151,7 +154,7 @@
 
         for (const img of imgs) {
             const btn = img.closest('button');
-            if (btn && btn.offsetParent !== null) {
+            if (btn && btn.getBoundingClientRect().width > 0) {
                 console.log('[LEA Upgrade] Gelber Verbesserungs-Button gefunden, klicke...');
                 btn.click();
                 lastImprovementClickTime = Date.now();
@@ -170,14 +173,30 @@
         if (document.querySelector(DIALOG_SELECTOR)) return;
         if (Date.now() - lastExpandClickTime < EXPAND_CLICK_COOLDOWN_MS) return;
 
+        let targetBtn = null;
+
         const expandBtns = Array.from(document.querySelectorAll('button.variant--normal')).filter(btn => {
             const txt = btn.querySelector('.text-font-dark');
             return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
         });
 
         if (expandBtns.length > 0) {
-            console.log('[LEA Upgrade] Ausbauen-Button gefunden, klicke...');
-            expandBtns[0].click();
+            targetBtn = expandBtns[0];
+        }
+
+        if (!targetBtn) {
+            const storageImgs = document.querySelectorAll('button:not([disabled]) img[src*="icon_improve_storage"]');
+            if (storageImgs.length > 0) targetBtn = storageImgs[0].closest('button');
+        }
+
+        if (!targetBtn) {
+            const unlockBtns = document.querySelectorAll('div[data-tutorial-id="factory-line-unlock"] button.variant--normal:not([disabled])');
+            if (unlockBtns.length > 0) targetBtn = unlockBtns[0];
+        }
+
+        if (targetBtn) {
+            console.log('[LEA Upgrade] Ausbauen/Lager/Unlock-Button gefunden, klicke...');
+            targetBtn.click();
             lastExpandClickTime = Date.now();
         }
     }
@@ -213,10 +232,10 @@
 
         // Fall 1: Linien-Konfigurationsansicht – keine klickbaren gelben Buttons mehr
         if (document.querySelector('.improvements-entry')) {
-            const hasClickable = !!document.querySelector(
-                '.improvements-entry button:not([disabled]) img[src*="improvement_arrow"]'
-            );
-            if (!hasClickable) {
+            const visibleImgs = Array.from(document.querySelectorAll('.improvements-entry button:not([disabled]) img[src*="improvement_arrow"]'))
+                .filter(img => img.closest('button') && img.closest('button').getBoundingClientRect().width > 0);
+
+            if (visibleImgs.length === 0) {
                 console.log('[LEA Upgrade] Linien-Konfiguration fertig, klicke Zurueck...');
                 backBtn.click();
                 lastBackClickTime = Date.now();
@@ -227,7 +246,7 @@
         // Fall 2: Gebaeude-Detailansicht – keine Upgrades mehr sichtbar
         const settingsBtns = document.querySelectorAll(SETTINGS_BTN_SELECTOR);
         const hasUpgradeGear = Array.from(settingsBtns).some(
-            btn => btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`)
+            btn => btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`) && btn.getBoundingClientRect().width > 0
         );
 
         // NEU: Pruefen ob es noch einen aktiven "Ausbauen" Button gibt
@@ -236,7 +255,13 @@
             return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
         });
 
-        if (!hasUpgradeGear && expandBtns.length === 0) {
+        // NEU: Pruefen ob es noch einen aktiven "Lager-Upgrade" Button gibt
+        const storageUpgradeImgs = document.querySelectorAll('button:not([disabled]) img[src*="icon_improve_storage"]');
+
+        // NEU: Pruefen ob es noch eine Linie zum Freischalten gibt
+        const unlockBtns = document.querySelectorAll('div[data-tutorial-id="factory-line-unlock"] button.variant--normal:not([disabled])');
+
+        if (!hasUpgradeGear && expandBtns.length === 0 && storageUpgradeImgs.length === 0 && unlockBtns.length === 0) {
             // Bevor wir Zurueck gehen, pruefen wir ob ein anderer Reiter (Lager, LKW) ein Upgrade hat
             const navTabsWithUpgrade = document.querySelectorAll('.bottom-navigation a button img[src*="improvement_arrow"]');
 
