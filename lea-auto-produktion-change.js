@@ -6,6 +6,8 @@
 // @description  Aendert die Produktion in den Produktionslinien per Knopfdruck.
 // @run-at       document-idle
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/refs/heads/main/lea-auto-produktion-change.js
+// @downloadURL  https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/refs/heads/main/lea-auto-produktion-change.js
 // ==/UserScript==
 
 (function () {
@@ -21,11 +23,11 @@
         // Prüfen, ob es überhaupt ein Produktionsgebäude ist.
         // Ein Produktionsgebäude hat entweder Einstellungs-Buttons für Linien, freischaltbare Linien 
         // oder die Überschrift "Produktionslinien".
-        const isProductionBuilding = 
-            document.querySelector('[data-tutorial-id="factory-line-settings-button"]') || 
+        const isProductionBuilding =
+            document.querySelector('[data-tutorial-id="factory-line-settings-button"]') ||
             document.querySelector('[data-tutorial-id="factory-line-unlock"]') ||
             Array.from(document.querySelectorAll('.panel-header p')).some(p => p.textContent.includes('Produktionslinien'));
-            
+
         if (!isProductionBuilding) {
             // Wenn der Button hier existiert (z.B. nach Tab-Wechsel in einem Lager), entfernen wir ihn zur Sicherheit
             const existingBtn = document.getElementById(INJECT_BTN_ID);
@@ -116,7 +118,7 @@
             let textColor = '#2980b9'; // Standard: Blau für Produkte
             if (opt.action === 'stop') textColor = '#c0392b'; // Rot für Stop
             if (opt.action === 'mix') textColor = '#27ae60'; // Grün für Verschiedene
-            
+
             optBtn.style.setProperty('color', textColor, 'important');
             optBtn.style.fontWeight = 'bold';
             optBtn.style.borderRadius = '4px';
@@ -146,7 +148,7 @@
 
     async function executeProductionChange(mode) {
         console.log(`[LEA Auto Prod Change] Starte Änderung für Modus: ${mode}`);
-        
+
         // Finde initial alle Linien, um die Anzahl zu wissen
         let settingsBtns = Array.from(document.querySelectorAll('button[data-tutorial-id="factory-line-settings-button"]'));
         const numLines = settingsBtns.length;
@@ -163,17 +165,17 @@
 
             console.log(`[LEA Auto Prod Change] Bearbeite Linie ${i + 1}/${numLines}`);
             settingsBtns[i].click();
-            
+
             // Warte bis das Einstellungsmenü offen ist
             await new Promise(r => setTimeout(r, 600));
-            
+
             const stopBtn = document.querySelector('[data-tutorial-id="factory-line-configuration-stop-button"]');
             const resBtns = document.querySelectorAll('[data-tutorial-id="factory-line-configuration-resource-button"]');
-            
+
             if (!stopBtn && resBtns.length === 0) {
                 console.warn('[LEA Auto Prod Change] Menü hat keine Produkt-Buttons. Gehe zurück.');
                 const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
-                if(backBtn) backBtn.click();
+                if (backBtn) backBtn.click();
                 await new Promise(r => setTimeout(r, 500));
                 continue;
             }
@@ -187,18 +189,18 @@
 
             if (targetBtn) {
                 targetBtn.click();
-                
+
                 // Warte kurz, damit der Speichern-Button eventuell aktiviert wird
                 await new Promise(r => setTimeout(r, 300));
-                
+
                 const saveBtn = document.querySelector('button[data-tutorial-id="factory-line-save-changes"]');
                 if (saveBtn && !saveBtn.disabled) {
                     saveBtn.click();
                     console.log(`[LEA Auto Prod Change] Änderungen gespeichert für Linie ${i + 1}`);
-                    
+
                     // Warte kurz, bis der Bestätigungsdialog auftaucht
                     await new Promise(r => setTimeout(r, 500));
-                    
+
                     const dialog = document.querySelector('.bb-dialog-modal');
                     if (dialog) {
                         const okBtn = Array.from(dialog.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'OK');
@@ -208,7 +210,7 @@
                             await new Promise(r => setTimeout(r, 500)); // Warte kurz nach dem Klick
                         }
                     }
-                    
+
                     // Prüfe, ob wir noch im Einstellungsmenü sind, und gehe ggf. explizit zurück
                     if (document.querySelector('button[data-tutorial-id="factory-line-save-changes"]')) {
                         const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
@@ -218,17 +220,17 @@
                     // Wenn nichts geändert wurde (ist schon aktiv), ist Speichern deaktiviert -> einfach Zurück klicken
                     console.log(`[LEA Auto Prod Change] Keine Änderung für Linie ${i + 1} (bereits ausgewählt). Gehe zurück.`);
                     const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
-                    if(backBtn) backBtn.click();
+                    if (backBtn) backBtn.click();
                 }
             } else {
                 const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
-                if(backBtn) backBtn.click();
+                if (backBtn) backBtn.click();
             }
-            
+
             // Warte bis wir wieder auf der Gebäude-Übersicht sind
             await new Promise(r => setTimeout(r, 700));
         }
-        
+
         console.log('[LEA Auto Prod Change] Alle Linien abgearbeitet.');
     }
 
