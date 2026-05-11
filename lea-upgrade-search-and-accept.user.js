@@ -291,21 +291,23 @@
         const toast = document.createElement('div');
         toast.id = 'lea-toast';
         toast.textContent = msg;
-        toast.style.position = 'fixed';
-        toast.style.top = '50%';
-        toast.style.left = '50%';
-        toast.style.transform = 'translate(-50%, -50%)';
-        toast.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
-        toast.style.color = '#fff';
-        toast.style.padding = '20px 40px';
-        toast.style.borderRadius = '12px';
-        toast.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
-        toast.style.zIndex = '9999';
-        toast.style.fontSize = '20px';
-        toast.style.fontWeight = 'bold';
-        toast.style.textAlign = 'center';
-        toast.style.pointerEvents = 'none';
-        toast.style.transition = 'opacity 0.3s ease-in-out';
+        Object.assign(toast.style, {
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            color: '#fff',
+            padding: '20px 40px',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+            zIndex: '9999',
+            fontSize: '20px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            pointerEvents: 'none',
+            transition: 'opacity 0.3s ease-in-out'
+        });
 
         document.body.appendChild(toast);
 
@@ -351,16 +353,20 @@
         btn.type = 'button';
         btn.className = 'bb-base-button variant--neutral size--md theme--light';
         btn.title = 'Naechstes verfuegbares Upgrade anklicken';
-        btn.style.marginRight = '8px';
-        btn.style.padding = '0 12px';
+        Object.assign(btn.style, {
+            marginRight: '8px',
+            padding: '0 12px'
+        });
 
         const inner = document.createElement('div');
         inner.className = 'relative flex size-full items-center justify-center';
-        inner.style.fontSize = '12px';
-        inner.style.fontWeight = 'bold';
-        inner.style.whiteSpace = 'pre-line';
-        inner.style.textAlign = 'center';
-        inner.style.lineHeight = '1.1';
+        Object.assign(inner.style, {
+            fontSize: '12px',
+            fontWeight: 'bold',
+            whiteSpace: 'pre-line',
+            textAlign: 'center',
+            lineHeight: '1.1'
+        });
         inner.textContent = 'Auto\nUpgrade';
         btn.appendChild(inner);
 

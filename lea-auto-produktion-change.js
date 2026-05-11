@@ -13,10 +13,35 @@
 (function () {
     'use strict';
 
+    // -----------------------------------------------------------------------
+    // SELEKTOREN & KONSTANTEN
+    // -----------------------------------------------------------------------
     const INJECT_BTN_ID = 'lea-prod-change-btn';
+    const MENU_ID = 'lea-prod-change-menu';
 
+    // Selektoren - Gebäudeübersicht
+    const SELECTOR_MANAGE_BTN = 'button[data-tutorial-id="manage-building-button"]';
+    const SELECTOR_SETTINGS_BTN = 'button[data-tutorial-id="factory-line-settings-button"]';
+    const SELECTOR_UNLOCK_BTN = '[data-tutorial-id="factory-line-unlock"]';
+    const SELECTOR_PANEL_HEADER = '.panel-header p';
+
+    // Selektoren - Linieneinstellungen
+    const SELECTOR_STOP_BTN = '[data-tutorial-id="factory-line-configuration-stop-button"]';
+    const SELECTOR_RESOURCE_BTN = '[data-tutorial-id="factory-line-configuration-resource-button"]';
+    const SELECTOR_SAVE_BTN = 'button[data-tutorial-id="factory-line-save-changes"]';
+    const SELECTOR_BACK_BTN = '.bottom-navigation button[show-divider]';
+    const SELECTOR_DIALOG = '.bb-dialog-modal';
+
+    // -----------------------------------------------------------------------
+    // SCHRITT 1: UI-Injektion (Button & Menü)
+    // -----------------------------------------------------------------------
+    
+    /**
+     * Fügt den "Prod. ändern"-Button in die Titel-Leiste von Produktionsgebäuden ein.
+     * Prüft zuvor, ob es sich wirklich um ein Produktionsgebäude handelt (kein Lager).
+     */
     function injectProductionChangeButton() {
-        const editBtn = document.querySelector('button[data-tutorial-id="manage-building-button"]');
+        const editBtn = document.querySelector(SELECTOR_MANAGE_BTN);
 
         if (!editBtn) return; // Wenn der gelbe Button nicht gefunden wurde, abbrechen
 
@@ -24,9 +49,9 @@
         // Ein Produktionsgebäude hat entweder Einstellungs-Buttons für Linien, freischaltbare Linien 
         // oder die Überschrift "Produktionslinien".
         const isProductionBuilding =
-            document.querySelector('[data-tutorial-id="factory-line-settings-button"]') ||
-            document.querySelector('[data-tutorial-id="factory-line-unlock"]') ||
-            Array.from(document.querySelectorAll('.panel-header p')).some(p => p.textContent.includes('Produktionslinien'));
+            document.querySelector(SELECTOR_SETTINGS_BTN) ||
+            document.querySelector(SELECTOR_UNLOCK_BTN) ||
+            Array.from(document.querySelectorAll(SELECTOR_PANEL_HEADER)).some(p => p.textContent.includes('Produktionslinien'));
 
         if (!isProductionBuilding) {
             // Wenn der Button hier existiert (z.B. nach Tab-Wechsel in einem Lager), entfernen wir ihn zur Sicherheit
@@ -43,19 +68,22 @@
         const btn = document.createElement('button');
         btn.id = INJECT_BTN_ID;
         btn.type = 'button';
-        // Nutze aehnliche Klassen wie beim Upgrade-Script
         btn.className = 'bb-base-button variant--neutral size--md theme--light';
         btn.title = 'Produktion ändern';
-        btn.style.marginRight = '8px';
-        btn.style.padding = '0 12px';
+        Object.assign(btn.style, {
+            marginRight: '8px',
+            padding: '0 12px'
+        });
 
         const inner = document.createElement('div');
         inner.className = 'relative flex size-full items-center justify-center';
-        inner.style.fontSize = '12px';
-        inner.style.fontWeight = 'bold';
-        inner.style.whiteSpace = 'pre-line';
-        inner.style.textAlign = 'center';
-        inner.style.lineHeight = '1.1';
+        Object.assign(inner.style, {
+            fontSize: '12px',
+            fontWeight: 'bold',
+            whiteSpace: 'pre-line',
+            textAlign: 'center',
+            lineHeight: '1.1'
+        });
         inner.textContent = 'Prod.\nändern';
         btn.appendChild(inner);
 
@@ -69,28 +97,34 @@
         console.log('[LEA Auto Prod Change] Button eingefügt.');
     }
 
+    /**
+     * Zeigt das Dropdown-Menü zur Auswahl der Aktion (Stop, Produkt 1-3, Mix).
+     * @param {HTMLElement} anchorBtn - Der Button, unter dem das Menü auftauchen soll.
+     */
     function showProductionSelectionMenu(anchorBtn) {
         // Schließe existierendes Menü, falls offen
-        const existing = document.getElementById('lea-prod-change-menu');
+        const existing = document.getElementById(MENU_ID);
         if (existing) {
             existing.remove();
             return;
         }
 
         const menu = document.createElement('div');
-        menu.id = 'lea-prod-change-menu';
+        menu.id = MENU_ID;
 
         // Styling für das Menü (angelehnt an das Spiel-Design)
-        menu.style.position = 'absolute';
-        menu.style.backgroundColor = '#1e2430'; // Dunkles Spiel-Blau/Grau
-        menu.style.border = '1px solid #34495e';
-        menu.style.borderRadius = '8px';
-        menu.style.padding = '10px';
-        menu.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-        menu.style.zIndex = '9999';
-        menu.style.display = 'flex';
-        menu.style.flexDirection = 'column';
-        menu.style.gap = '8px';
+        Object.assign(menu.style, {
+            position: 'absolute',
+            backgroundColor: '#1e2430', // Dunkles Spiel-Blau/Grau
+            border: '1px solid #34495e',
+            borderRadius: '8px',
+            padding: '10px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: '9999',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+        });
 
         // Positioniere das Menü unter dem Button
         const rect = anchorBtn.getBoundingClientRect();
@@ -110,9 +144,15 @@
             const optBtn = document.createElement('button');
             optBtn.textContent = opt.label;
             optBtn.className = 'bb-base-button variant--normal size--sm theme--light';
-            optBtn.style.width = '100%';
-            optBtn.style.textAlign = 'center';
-            optBtn.style.padding = '8px 16px';
+            
+            Object.assign(optBtn.style, {
+                width: '100%',
+                textAlign: 'center',
+                padding: '8px 16px',
+                fontWeight: 'bold',
+                borderRadius: '4px',
+                cursor: 'pointer'
+            });
 
             // Wir belassen den gelben Button-Hintergrund des Spiels und ändern nur die Schriftfarbe
             let textColor = '#2980b9'; // Standard: Blau für Produkte
@@ -120,9 +160,6 @@
             if (opt.action === 'mix') textColor = '#27ae60'; // Grün für Verschiedene
 
             optBtn.style.setProperty('color', textColor, 'important');
-            optBtn.style.fontWeight = 'bold';
-            optBtn.style.borderRadius = '4px';
-            optBtn.style.cursor = 'pointer';
 
             optBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -146,11 +183,19 @@
         document.body.appendChild(menu);
     }
 
+    // -----------------------------------------------------------------------
+    // SCHRITT 2: Kern-Logik für den Produktwechsel
+    // -----------------------------------------------------------------------
+    
+    /**
+     * Führt die ausgewählte Aktion für alle Produktionslinien des Gebäudes aus.
+     * @param {string} mode - 'stop', 'prod1', 'prod2', 'prod3' oder 'mix'
+     */
     async function executeProductionChange(mode) {
         console.log(`[LEA Auto Prod Change] Starte Änderung für Modus: ${mode}`);
 
         // Finde initial alle Linien, um die Anzahl zu wissen
-        let settingsBtns = Array.from(document.querySelectorAll('button[data-tutorial-id="factory-line-settings-button"]'));
+        let settingsBtns = Array.from(document.querySelectorAll(SELECTOR_SETTINGS_BTN));
         const numLines = settingsBtns.length;
 
         if (numLines === 0) {
@@ -160,8 +205,8 @@
 
         for (let i = 0; i < numLines; i++) {
             // Nach jedem Durchlauf das DOM neu lesen, da sich Elemente durch Navigation ändern
-            settingsBtns = Array.from(document.querySelectorAll('button[data-tutorial-id="factory-line-settings-button"]'));
-            if (!settingsBtns[i]) break; // Sicherheitshalber
+            settingsBtns = Array.from(document.querySelectorAll(SELECTOR_SETTINGS_BTN));
+            if (!settingsBtns[i]) break; // Sicherheitshalber abbrechen, falls sich DOM stark verändert hat
 
             console.log(`[LEA Auto Prod Change] Bearbeite Linie ${i + 1}/${numLines}`);
             settingsBtns[i].click();
@@ -169,23 +214,30 @@
             // Warte bis das Einstellungsmenü offen ist
             await new Promise(r => setTimeout(r, 600));
 
-            const stopBtn = document.querySelector('[data-tutorial-id="factory-line-configuration-stop-button"]');
-            const resBtns = document.querySelectorAll('[data-tutorial-id="factory-line-configuration-resource-button"]');
+            const stopBtn = document.querySelector(SELECTOR_STOP_BTN);
+            const resBtns = document.querySelectorAll(SELECTOR_RESOURCE_BTN);
 
             if (!stopBtn && resBtns.length === 0) {
                 console.warn('[LEA Auto Prod Change] Menü hat keine Produkt-Buttons. Gehe zurück.');
-                const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
+                const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                 if (backBtn) backBtn.click();
                 await new Promise(r => setTimeout(r, 500));
                 continue;
             }
 
+            // Ziel-Button bestimmen
             let targetBtn = null;
-            if (mode === 'stop') targetBtn = stopBtn;
-            else if (mode === 'prod1') targetBtn = resBtns[0];
-            else if (mode === 'prod2') targetBtn = resBtns[1] || resBtns[0];
-            else if (mode === 'prod3') targetBtn = resBtns[2] || resBtns[1] || resBtns[0];
-            else if (mode === 'mix') targetBtn = resBtns[i % resBtns.length]; // Z.B. Linie 1->Prod 1, Linie 2->Prod 2, Linie 3->Prod 3
+            if (mode === 'stop') {
+                targetBtn = stopBtn;
+            } else if (mode === 'prod1') {
+                targetBtn = resBtns[0];
+            } else if (mode === 'prod2') {
+                targetBtn = resBtns[1] || resBtns[0];
+            } else if (mode === 'prod3') {
+                targetBtn = resBtns[2] || resBtns[1] || resBtns[0];
+            } else if (mode === 'mix') {
+                targetBtn = resBtns[i % resBtns.length]; // Z.B. Linie 1->Prod 1, Linie 2->Prod 2, Linie 3->Prod 3
+            }
 
             if (targetBtn) {
                 targetBtn.click();
@@ -193,15 +245,15 @@
                 // Warte kurz, damit der Speichern-Button eventuell aktiviert wird
                 await new Promise(r => setTimeout(r, 300));
 
-                const saveBtn = document.querySelector('button[data-tutorial-id="factory-line-save-changes"]');
+                const saveBtn = document.querySelector(SELECTOR_SAVE_BTN);
                 if (saveBtn && !saveBtn.disabled) {
                     saveBtn.click();
                     console.log(`[LEA Auto Prod Change] Änderungen gespeichert für Linie ${i + 1}`);
 
-                    // Warte kurz, bis der Bestätigungsdialog auftaucht
+                    // Warte kurz, bis der Bestätigungsdialog auftaucht (falls "Umrüsten" nötig)
                     await new Promise(r => setTimeout(r, 500));
 
-                    const dialog = document.querySelector('.bb-dialog-modal');
+                    const dialog = document.querySelector(SELECTOR_DIALOG);
                     if (dialog) {
                         const okBtn = Array.from(dialog.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'OK');
                         if (okBtn) {
@@ -212,18 +264,19 @@
                     }
 
                     // Prüfe, ob wir noch im Einstellungsmenü sind, und gehe ggf. explizit zurück
-                    if (document.querySelector('button[data-tutorial-id="factory-line-save-changes"]')) {
-                        const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
+                    if (document.querySelector(SELECTOR_SAVE_BTN)) {
+                        const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                         if (backBtn) backBtn.click();
                     }
                 } else {
                     // Wenn nichts geändert wurde (ist schon aktiv), ist Speichern deaktiviert -> einfach Zurück klicken
                     console.log(`[LEA Auto Prod Change] Keine Änderung für Linie ${i + 1} (bereits ausgewählt). Gehe zurück.`);
-                    const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
+                    const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                     if (backBtn) backBtn.click();
                 }
             } else {
-                const backBtn = document.querySelector('.bottom-navigation button[show-divider]');
+                // Fallback, falls kein Button gefunden wurde
+                const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                 if (backBtn) backBtn.click();
             }
 
@@ -234,6 +287,13 @@
         console.log('[LEA Auto Prod Change] Alle Linien abgearbeitet.');
     }
 
+    // -----------------------------------------------------------------------
+    // INIT
+    // -----------------------------------------------------------------------
+    
+    /**
+     * Initialisiert das Skript und startet den MutationObserver.
+     */
     function init() {
         console.log('[LEA Auto Prod Change] Initialisiert v1.0.0');
 
