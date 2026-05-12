@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LEA Auto Produktion Change
 // @namespace    le-tools
-// @version      1.0.0
+// @version      1.1.0
 // @match        https://game.logistics-empire.com/*
 // @description  Aendert die Produktion in den Produktionslinien per Knopfdruck.
 // @run-at       document-idle
@@ -35,7 +35,7 @@
     // -----------------------------------------------------------------------
     // SCHRITT 1: UI-Injektion (Button & Menü)
     // -----------------------------------------------------------------------
-    
+
     /**
      * Fügt den "Prod. ändern"-Button in die Titel-Leiste von Produktionsgebäuden ein.
      * Prüft zuvor, ob es sich wirklich um ein Produktionsgebäude handelt (kein Lager).
@@ -144,7 +144,7 @@
             const optBtn = document.createElement('button');
             optBtn.textContent = opt.label;
             optBtn.className = 'bb-base-button variant--normal size--sm theme--light';
-            
+
             Object.assign(optBtn.style, {
                 width: '100%',
                 textAlign: 'center',
@@ -186,7 +186,38 @@
     // -----------------------------------------------------------------------
     // SCHRITT 2: Kern-Logik für den Produktwechsel
     // -----------------------------------------------------------------------
-    
+
+    /**
+     * Wartet darauf, dass ein Element auf dem Bildschirm erscheint.
+     * @param {string} selector - CSS-Selektor
+     * @param {number} timeoutMs - Max Wartezeit
+     * @returns {Promise<boolean>} true wenn gefunden, false bei Timeout
+     */
+    async function waitForElementToAppear(selector, timeoutMs = 3000) {
+        const startTime = Date.now();
+        while (!document.querySelector(selector)) {
+            if (Date.now() - startTime > timeoutMs) return false;
+            await new Promise(r => setTimeout(r, 50));
+        }
+        return true;
+    }
+
+    /**
+     * Wartet darauf, dass ein Element komplett vom Bildschirm verschwindet.
+     * @param {string} selector - CSS-Selektor
+     * @param {number} timeoutMs - Max Wartezeit
+     */
+    async function waitForElementToDisappear(selector, timeoutMs = 3000) {
+        const startTime = Date.now();
+        while (document.querySelector(selector)) {
+            if (Date.now() - startTime > timeoutMs) {
+                console.warn(`[LEA Auto Prod Change] Timeout: Element ${selector} ist nicht verschwunden.`);
+                break;
+            }
+            await new Promise(r => setTimeout(r, 50));
+        }
+    }
+
     /**
      * Führt die ausgewählte Aktion für alle Produktionslinien des Gebäudes aus.
      * @param {string} mode - 'stop', 'prod1', 'prod2', 'prod3' oder 'mix'
@@ -211,8 +242,8 @@
             console.log(`[LEA Auto Prod Change] Bearbeite Linie ${i + 1}/${numLines}`);
             settingsBtns[i].click();
 
-            // Warte bis das Einstellungsmenü offen ist
-            await new Promise(r => setTimeout(r, 600));
+            // Warte bis das Einstellungsmenü offen ist (Speichern-Button ist ein guter Indikator)
+            await waitForElementToAppear(SELECTOR_SAVE_BTN, 2000);
 
             const stopBtn = document.querySelector(SELECTOR_STOP_BTN);
             const resBtns = document.querySelectorAll(SELECTOR_RESOURCE_BTN);
@@ -221,7 +252,7 @@
                 console.warn('[LEA Auto Prod Change] Menü hat keine Produkt-Buttons. Gehe zurück.');
                 const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                 if (backBtn) backBtn.click();
-                await new Promise(r => setTimeout(r, 500));
+                await waitForElementToDisappear(SELECTOR_SAVE_BTN, 2000);
                 continue;
             }
 
@@ -242,7 +273,7 @@
             if (targetBtn) {
                 targetBtn.click();
 
-                // Warte kurz, damit der Speichern-Button eventuell aktiviert wird
+                // Warte kurz, damit der Speichern-Button eventuell aktiviert wird (Spiel-Logik)
                 await new Promise(r => setTimeout(r, 300));
 
                 const saveBtn = document.querySelector(SELECTOR_SAVE_BTN);
@@ -250,16 +281,16 @@
                     saveBtn.click();
                     console.log(`[LEA Auto Prod Change] Änderungen gespeichert für Linie ${i + 1}`);
 
-                    // Warte kurz, bis der Bestätigungsdialog auftaucht (falls "Umrüsten" nötig)
-                    await new Promise(r => setTimeout(r, 500));
+                    // Warte kurz, ob der Bestätigungsdialog auftaucht (falls "Umrüsten" nötig)
+                    const dialogAppeared = await waitForElementToAppear(SELECTOR_DIALOG, 500);
 
-                    const dialog = document.querySelector(SELECTOR_DIALOG);
-                    if (dialog) {
+                    if (dialogAppeared) {
+                        const dialog = document.querySelector(SELECTOR_DIALOG);
                         const okBtn = Array.from(dialog.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'OK');
                         if (okBtn) {
                             console.log(`[LEA Auto Prod Change] Bestätigungsdialog gefunden, klicke OK.`);
                             okBtn.click();
-                            await new Promise(r => setTimeout(r, 500)); // Warte kurz nach dem Klick
+                            await waitForElementToDisappear(SELECTOR_DIALOG, 3000);
                         }
                     }
 
@@ -267,21 +298,24 @@
                     if (document.querySelector(SELECTOR_SAVE_BTN)) {
                         const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                         if (backBtn) backBtn.click();
+                        await waitForElementToDisappear(SELECTOR_SAVE_BTN, 2000);
                     }
                 } else {
                     // Wenn nichts geändert wurde (ist schon aktiv), ist Speichern deaktiviert -> einfach Zurück klicken
                     console.log(`[LEA Auto Prod Change] Keine Änderung für Linie ${i + 1} (bereits ausgewählt). Gehe zurück.`);
                     const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                     if (backBtn) backBtn.click();
+                    await waitForElementToDisappear(SELECTOR_SAVE_BTN, 2000);
                 }
             } else {
                 // Fallback, falls kein Button gefunden wurde
                 const backBtn = document.querySelector(SELECTOR_BACK_BTN);
                 if (backBtn) backBtn.click();
+                await waitForElementToDisappear(SELECTOR_SAVE_BTN, 2000);
             }
 
-            // Warte bis wir wieder auf der Gebäude-Übersicht sind
-            await new Promise(r => setTimeout(r, 700));
+            // Sehr kurze Pause, bevor die nächste Linie angeklickt wird
+            await new Promise(r => setTimeout(r, 100));
         }
 
         console.log('[LEA Auto Prod Change] Alle Linien abgearbeitet.');
@@ -290,7 +324,7 @@
     // -----------------------------------------------------------------------
     // INIT
     // -----------------------------------------------------------------------
-    
+
     /**
      * Initialisiert das Skript und startet den MutationObserver.
      */

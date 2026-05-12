@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LEA Upgrade Search and Accept
 // @namespace    le-tools
-// @version      1.2.3
+// @version      1.3.0
 // @match        https://game.logistics-empire.com/*
 // @description  Sucht Gebaeude mit verfuegbaren Upgrades und klickt sie an. Bestaetigt Upgrade-Dialoge automatisch.
 // @run-at       document-idle
@@ -21,267 +21,56 @@
     const FILTER_BAR_SELECTOR = '.bb-filter-and-sort-bar';
     const INJECT_BTN_ID = 'lea-upgrade-scan-btn';
 
-    // Dialog Auto-Accept
+    // UI Elemente im Gebäude
+    const SETTINGS_BTN_SELECTOR = 'button[data-tutorial-id="factory-line-settings-button"]';
+    const IMPROVEMENT_ARROW_SRC = 'improvement_arrow';
+    const BACK_BTN_SELECTOR = '.bottom-navigation button[show-divider]';
+
+    // Dialog
     const DIALOG_SELECTOR = '.bb-dialog';
     const TITLE_SELECTOR = '.text-h1';
     const BUCKS_SRC_PREFIX = 'https://game.logistics-empire.com/assets/cur_bucks-';
-    const MARK_ATTR = 'data-lea-upgraded';
 
-    // Prueft ob die UPGRADE-Uebersicht offen ist (nicht die allgemeine Gebaeudeübersicht!)
-    // Erkennung: der Upgrades-Reiter (untere Leiste rechts) ist aktiv
+    // Status
+    let isUpgrading = false;
+
+    // -----------------------------------------------------------------------
+    // HILFSFUNKTIONEN (Warten & UI-Prüfungen)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Wartet darauf, dass ein Element auf dem Bildschirm erscheint.
+     * @param {string} selector - CSS-Selektor
+     * @param {number} timeoutMs - Max Wartezeit
+     * @returns {Promise<boolean>} true wenn gefunden, false bei Timeout
+     */
+    async function waitForElementToAppear(selector, timeoutMs = 3000) {
+        const startTime = Date.now();
+        while (!document.querySelector(selector)) {
+            if (Date.now() - startTime > timeoutMs) return false;
+            await new Promise(r => setTimeout(r, 50));
+        }
+        return true;
+    }
+
+    /**
+     * Wartet darauf, dass ein Element komplett vom Bildschirm verschwindet.
+     * @param {string} selector - CSS-Selektor
+     * @param {number} timeoutMs - Max Wartezeit
+     */
+    async function waitForElementToDisappear(selector, timeoutMs = 3000) {
+        const startTime = Date.now();
+        while (document.querySelector(selector)) {
+            if (Date.now() - startTime > timeoutMs) {
+                console.warn(`[LEA Upgrade] Timeout: Element ${selector} ist nicht verschwunden.`);
+                break;
+            }
+            await new Promise(r => setTimeout(r, 50));
+        }
+    }
+
     function isUpgradeOverviewOpen() {
         return !!document.querySelector('a[href="#/buildings/upgrades"].router-link-exact-active');
-    }
-
-    // -----------------------------------------------------------------------
-    // SCHRITT 1: Gebaeude mit verfuegbarem Upgrade suchen und anklicken
-    // -----------------------------------------------------------------------
-    // Flag: wurde die Navigation zum Gebaeude vom Skript ausgeloest?
-    // Nur dann darf clickBackWhenDone() automatisch zuruecknavigieren.
-    // Bei manuell angeklickten Gebauden bleibt das Flag false → kein Auto-Zurueck!
-    let scriptNavigatedToBuilding = false;
-
-    function clickNextAvailableUpgrade() {
-        const btnContainers = document.querySelectorAll('[data-tutorial-id="building-list-item-buttons"]');
-
-        for (const container of btnContainers) {
-            const card = container.closest('[class*="building-card"]');
-            if (!card) continue;
-
-            // Pruefen ob ein "Upgrade verfuegbar"-Icon vorhanden ist
-            const hasAvailable = !!card.querySelector(`img[src*="${AVAILABLE_STATUS_SRC}"]`);
-            if (!hasAvailable) continue;
-
-            // Blauen Pfeil-Button finden und klicken
-            const arrowBtn = container.querySelector(`img[src*="${ARROW_BTN_SRC}"]`)?.closest('button');
-            if (arrowBtn && arrowBtn.offsetParent !== null) {
-                console.log('[LEA Upgrade] Gebaeude mit verfuegbarem Upgrade gefunden, klicke Pfeil...');
-                arrowBtn.click();
-                scriptNavigatedToBuilding = true; // Skript hat navigiert
-                return true;
-            }
-        }
-
-        console.log('[LEA Upgrade] Kein Gebaeude mit verfuegbarem Upgrade gefunden.');
-        return false;
-    }
-
-    // -----------------------------------------------------------------------
-    // SCHRITT 2: Upgrade-Dialog automatisch bestaetigen
-    // -----------------------------------------------------------------------
-    function acceptUpgradeDialog(dialog) {
-        if (!dialog) return;
-
-        const lastMark = dialog.getAttribute(MARK_ATTR);
-        if (lastMark && (Date.now() - parseInt(lastMark) < 3000)) return;
-
-        const titleEl = dialog.querySelector(TITLE_SELECTOR);
-        if (!titleEl) return;
-
-        const titleText = (titleEl.textContent || '').trim();
-        if (!/upgrade/i.test(titleText)) return;
-
-        let targetBtn = null;
-        dialog.querySelectorAll('button img').forEach(img => {
-            const src = img.getAttribute('src') || img.src || '';
-            if (src.startsWith(BUCKS_SRC_PREFIX) && !targetBtn) {
-                targetBtn = img.closest('button');
-            }
-        });
-
-        if (!targetBtn || targetBtn.hasAttribute('disabled')) return;
-
-        dialog.setAttribute(MARK_ATTR, Date.now().toString());
-        console.log('[LEA Upgrade] Upgrade-Dialog erkannt, klicke Bestaetigen...');
-        try {
-            targetBtn.click();
-        } catch (e) {
-            console.error('[LEA Upgrade] Dialog-Klick fehlgeschlagen:', e);
-        }
-    }
-
-    function scanDialogs() {
-        document.querySelectorAll(DIALOG_SELECTOR).forEach(d => acceptUpgradeDialog(d));
-    }
-
-    // -----------------------------------------------------------------------
-    // SCHRITT 1.5: Im Gebaeude-Detail den Zahnrad-Button mit Upgrade-Pfeil klicken
-    // -----------------------------------------------------------------------
-    const SETTINGS_BTN_SELECTOR = 'button[data-tutorial-id="factory-line-settings-button"]';
-    const IMPROVEMENT_ARROW_SRC = 'improvement_arrow';
-    let lastBuildingClickTime = 0;
-    const BUILDING_CLICK_COOLDOWN_MS = 3000; // 3 Sekunden zwischen Klicks
-
-    function clickUpgradeInBuilding() {
-        // Cooldown pruefen
-        if (Date.now() - lastBuildingClickTime < BUILDING_CLICK_COOLDOWN_MS) return;
-
-        // Alle Zahnrad-Buttons auf der Seite suchen
-        const settingsBtns = document.querySelectorAll(SETTINGS_BTN_SELECTOR);
-
-        for (const btn of settingsBtns) {
-            // Pruefen ob dieser Button den gruenen Upgrade-Pfeil als Overlay hat und sichtbar ist
-            if (btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`) && btn.getBoundingClientRect().width > 0) {
-                console.log('[LEA Upgrade] Zahnrad mit Upgrade-Pfeil gefunden, klicke...');
-                btn.click();
-                lastBuildingClickTime = Date.now();
-                return; // Nur einen auf einmal klicken
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // SCHRITT 2.5: Gelbe Verbesserungs-Buttons in der Linien-Konfiguration klicken
-    // Nach dem Zahnrad-Klick oeffnet sich das Linien-Konfig-Fenster.
-    // Dort gibt es gelbe Buttons mit improvement_arrow (z.B. Produktlager +100).
-    // Es koennen mehrere sein – einen nach dem anderen klicken.
-    // -----------------------------------------------------------------------
-    let lastImprovementClickTime = 0;
-    const IMPROVEMENT_CLICK_COOLDOWN_MS = 1500;
-
-    function clickImprovementArrowButtons() {
-        // Wenn gerade ein Dialog offen ist: warten – scanDialogs() uebernimmt
-        if (document.querySelector(DIALOG_SELECTOR)) return;
-
-        // Cooldown pruefen
-        if (Date.now() - lastImprovementClickTime < IMPROVEMENT_CLICK_COOLDOWN_MS) return;
-
-        // Gelbe Pfeil-Buttons in .improvements-entry suchen
-        // Erkennnung: button nicht disabled, enthaelt improvement_arrow Bild
-        const imgs = document.querySelectorAll(
-            '.improvements-entry button:not([disabled]) img[src*="improvement_arrow"]'
-        );
-
-        for (const img of imgs) {
-            const btn = img.closest('button');
-            if (btn && btn.getBoundingClientRect().width > 0) {
-                console.log('[LEA Upgrade] Gelber Verbesserungs-Button gefunden, klicke...');
-                btn.click();
-                lastImprovementClickTime = Date.now();
-                return; // Einen nach dem anderen – naechsten nach Dialog-Bestaetigung
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // SCHRITT 2.8: Globale Ausbauen-Buttons (z.B. "Parkplatz Ausbauen") klicken
-    // -----------------------------------------------------------------------
-    let lastExpandClickTime = 0;
-    const EXPAND_CLICK_COOLDOWN_MS = 1500;
-
-    function clickExpandButtons() {
-        if (document.querySelector(DIALOG_SELECTOR)) return;
-        if (Date.now() - lastExpandClickTime < EXPAND_CLICK_COOLDOWN_MS) return;
-
-        let targetBtn = null;
-
-        const expandBtns = Array.from(document.querySelectorAll('button.variant--normal')).filter(btn => {
-            const txt = btn.querySelector('.text-font-dark');
-            return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
-        });
-
-        if (expandBtns.length > 0) {
-            targetBtn = expandBtns[0];
-        }
-
-        if (!targetBtn) {
-            const storageImgs = document.querySelectorAll('button:not([disabled]) img[src*="icon_improve_storage"]');
-            if (storageImgs.length > 0) targetBtn = storageImgs[0].closest('button');
-        }
-
-        if (!targetBtn) {
-            const unlockBtns = document.querySelectorAll('div[data-tutorial-id="factory-line-unlock"] button.variant--normal:not([disabled])');
-            if (unlockBtns.length > 0) targetBtn = unlockBtns[0];
-        }
-
-        if (targetBtn) {
-            console.log('[LEA Upgrade] Ausbauen/Lager/Unlock-Button gefunden, klicke...');
-            targetBtn.click();
-            lastExpandClickTime = Date.now();
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // SCHRITT 3: Zurueck-Button klicken wenn keine Upgrades mehr moeglich
-    // Fall 1: Linien-Konfiguration offen, aber keine gelben Buttons mehr
-    //         → Zurueck zur Gebaeude-Detailansicht
-    // Fall 2: Gebaeude-Detailansicht offen, aber kein Zahnrad mit Upgrade-Pfeil
-    //         → Zurueck zur Upgrade-Uebersicht (Liste)
-    //
-    // WICHTIG: Nur aktiv wenn das Skript selbst die Navigation ausgeloest hat
-    //          (scriptNavigatedToBuilding = true). Manuell geoeffnete Gebaeude
-    //          werden NICHT automatisch geschlossen!
-    // -----------------------------------------------------------------------
-    const BACK_BTN_SELECTOR = '.bottom-navigation button[show-divider]';
-    let lastBackClickTime = 0;
-    const BACK_CLICK_COOLDOWN_MS = 1500;
-
-    function clickBackWhenDone() {
-        // Nicht handeln wenn Dialog offen ist
-        if (document.querySelector(DIALOG_SELECTOR)) return;
-
-        // Nur aktiv wenn der Skript selbst zum Gebaeude navigiert hat
-        // (verhindert Schliessen von manuell geoeffneten Gebaeuden)
-        if (!scriptNavigatedToBuilding) return;
-
-        // Cooldown pruefen
-        if (Date.now() - lastBackClickTime < BACK_CLICK_COOLDOWN_MS) return;
-
-        const backBtn = document.querySelector(BACK_BTN_SELECTOR);
-        if (!backBtn || backBtn.offsetParent === null) return;
-
-        // Fall 1: Linien-Konfigurationsansicht – keine klickbaren gelben Buttons mehr
-        if (document.querySelector('.improvements-entry')) {
-            const visibleImgs = Array.from(document.querySelectorAll('.improvements-entry button:not([disabled]) img[src*="improvement_arrow"]'))
-                .filter(img => img.closest('button') && img.closest('button').getBoundingClientRect().width > 0);
-
-            if (visibleImgs.length === 0) {
-                console.log('[LEA Upgrade] Linien-Konfiguration fertig, klicke Zurueck...');
-                backBtn.click();
-                lastBackClickTime = Date.now();
-            }
-            return;
-        }
-
-        // Fall 2: Gebaeude-Detailansicht – keine Upgrades mehr sichtbar
-        const settingsBtns = document.querySelectorAll(SETTINGS_BTN_SELECTOR);
-        const hasUpgradeGear = Array.from(settingsBtns).some(
-            btn => btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`) && btn.getBoundingClientRect().width > 0
-        );
-
-        // NEU: Pruefen ob es noch einen aktiven "Ausbauen" Button gibt
-        const expandBtns = Array.from(document.querySelectorAll('button.variant--normal')).filter(btn => {
-            const txt = btn.querySelector('.text-font-dark');
-            return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
-        });
-
-        // NEU: Pruefen ob es noch einen aktiven "Lager-Upgrade" Button gibt
-        const storageUpgradeImgs = document.querySelectorAll('button:not([disabled]) img[src*="icon_improve_storage"]');
-
-        // NEU: Pruefen ob es noch eine Linie zum Freischalten gibt
-        const unlockBtns = document.querySelectorAll('div[data-tutorial-id="factory-line-unlock"] button.variant--normal:not([disabled])');
-
-        if (!hasUpgradeGear && expandBtns.length === 0 && storageUpgradeImgs.length === 0 && unlockBtns.length === 0) {
-            // Bevor wir Zurueck gehen, pruefen wir ob ein anderer Reiter (Lager, LKW) ein Upgrade hat
-            const navTabsWithUpgrade = document.querySelectorAll('.bottom-navigation a button img[src*="improvement_arrow"]');
-
-            for (const img of navTabsWithUpgrade) {
-                const tabBtn = img.closest('button');
-                // Nur inaktive Reiter anklicken, um Endlosschleifen im aktiven Reiter zu vermeiden
-                if (tabBtn && tabBtn.getAttribute('active') !== 'true') {
-                    console.log('[LEA Upgrade] Upgrade in anderem Reiter gefunden, wechsle Ansicht...');
-                    tabBtn.click();
-                    lastBackClickTime = Date.now();
-                    return;
-                }
-            }
-
-            // Weder hier noch in einem anderen Reiter gibt es was zu tun -> Zurueck zur Liste
-            console.log('[LEA Upgrade] Kein weiteres Upgrade im Gebaeude, klicke Zurueck zur Liste...');
-            backBtn.click();
-            lastBackClickTime = Date.now();
-            scriptNavigatedToBuilding = false; // Zurueck in der Liste: Flag zuruecksetzen
-        }
     }
 
     function showToast(msg) {
@@ -323,10 +112,247 @@
     }
 
     // -----------------------------------------------------------------------
-    // UI: Scan-Button in die Toolbar der Upgrade-Uebersicht einfuegen
+    // SUCH-FUNKTIONEN FÜR UPGRADES
+    // -----------------------------------------------------------------------
+
+    function findNextAvailableBuildingArrow() {
+        const btnContainers = document.querySelectorAll('[data-tutorial-id="building-list-item-buttons"]');
+        for (const container of btnContainers) {
+            const card = container.closest('[class*="building-card"]');
+            if (!card) continue;
+
+            const hasAvailable = !!card.querySelector(`img[src*="${AVAILABLE_STATUS_SRC}"]`);
+            if (!hasAvailable) continue;
+
+            const arrowBtn = container.querySelector(`img[src*="${ARROW_BTN_SRC}"]`)?.closest('button');
+            if (arrowBtn && arrowBtn.offsetParent !== null) {
+                return arrowBtn;
+            }
+        }
+        return null;
+    }
+
+    function findExpandButton() {
+        const expandBtns = Array.from(document.querySelectorAll('button.variant--normal')).filter(btn => {
+            const txt = btn.querySelector('.text-font-dark');
+            return txt && txt.textContent.includes('Ausbauen') && btn.getAttribute('disabled') === null;
+        });
+        if (expandBtns.length > 0) return expandBtns[0];
+
+        const storageImgs = document.querySelectorAll('button:not([disabled]) img[src*="icon_improve_storage"]');
+        if (storageImgs.length > 0) return storageImgs[0].closest('button');
+
+        const unlockBtns = document.querySelectorAll('div[data-tutorial-id="factory-line-unlock"] button.variant--normal:not([disabled])');
+        if (unlockBtns.length > 0) return unlockBtns[0];
+
+        return null;
+    }
+
+    function findSettingsGearWithUpgrade() {
+        const settingsBtns = document.querySelectorAll(SETTINGS_BTN_SELECTOR);
+        for (const btn of settingsBtns) {
+            if (btn.querySelector(`img[src*="${IMPROVEMENT_ARROW_SRC}"]`) && btn.getBoundingClientRect().width > 0) {
+                return btn;
+            }
+        }
+        return null;
+    }
+
+    function findImprovementButton() {
+        const imgs = document.querySelectorAll('.improvements-entry button:not([disabled]) img[src*="improvement_arrow"]');
+        for (const img of imgs) {
+            const btn = img.closest('button');
+            if (btn && btn.getBoundingClientRect().width > 0) return btn;
+        }
+        return null;
+    }
+
+    function findTabWithUpgrade() {
+        const navTabsWithUpgrade = document.querySelectorAll('.bottom-navigation a button img[src*="improvement_arrow"]');
+        for (const img of navTabsWithUpgrade) {
+            const tabBtn = img.closest('button');
+            if (tabBtn && tabBtn.getAttribute('active') !== 'true') return tabBtn;
+        }
+        return null;
+    }
+
+    async function handleUpgradeDialog() {
+        // Warte auf Dialog (max 1500ms)
+        const dialogAppeared = await waitForElementToAppear(DIALOG_SELECTOR, 1500);
+        if (!dialogAppeared) return;
+
+        const dialog = document.querySelector(DIALOG_SELECTOR);
+        if (!dialog) return;
+
+        const titleEl = dialog.querySelector(TITLE_SELECTOR);
+        const titleText = (titleEl && titleEl.textContent || '').trim();
+        if (!/upgrade/i.test(titleText)) return;
+
+        let targetBtn = null;
+        dialog.querySelectorAll('button img').forEach(img => {
+            const src = img.getAttribute('src') || img.src || '';
+            if (src.startsWith(BUCKS_SRC_PREFIX) && !targetBtn) {
+                targetBtn = img.closest('button');
+            }
+        });
+
+        if (targetBtn && !targetBtn.hasAttribute('disabled')) {
+            console.log('[LEA Upgrade] Klicke Dialog-Bestätigung...');
+            targetBtn.click();
+            await waitForElementToDisappear(DIALOG_SELECTOR, 3000);
+        } else {
+            // Fallback: Wenn wir es nicht klicken können (zu wenig Geld), Dialog schließen
+            console.warn('[LEA Upgrade] Dialog kann nicht bestätigt werden. Schließe ihn...');
+            const cancelBtn = Array.from(dialog.querySelectorAll('button')).find(b =>
+                (b.textContent.includes('Abbrechen') || b.textContent.includes('Schließen')) && !b.hasAttribute('disabled')
+            );
+            if (cancelBtn) cancelBtn.click();
+            await waitForElementToDisappear(DIALOG_SELECTOR, 3000);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // HAUPT-UPGRADE LOGIK (ASYNC)
+    // -----------------------------------------------------------------------
+
+    async function executeAutoUpgrade() {
+        if (isUpgrading) {
+            showToast('Upgrade läuft bereits...');
+            return;
+        }
+        isUpgrading = true;
+
+        try {
+            console.log('[LEA Upgrade] Starte Auto-Upgrade Ablauf...');
+
+            // Schritt 1: Liste nach oben scrollen, damit Virtual Scrolling alle Elemente lädt
+            const anchorCard = document.querySelector('[class*="building-card"]');
+            if (anchorCard) {
+                let scrollContainer = anchorCard.parentElement;
+                while (scrollContainer && scrollContainer !== document.body) {
+                    const style = window.getComputedStyle(scrollContainer);
+                    if (style.overflowY === 'auto' || style.overflowY === 'scroll' || scrollContainer.classList.contains('scroll')) {
+                        scrollContainer.scrollTop = 0;
+                        break;
+                    }
+                    scrollContainer = scrollContainer.parentElement;
+                }
+                await new Promise(r => setTimeout(r, 300)); // Kurz warten auf DOM Rendering
+            }
+
+            // Schritt 2: Nächstes Gebäude suchen und reingehen
+            const arrowBtn = findNextAvailableBuildingArrow();
+            if (!arrowBtn) {
+                showToast('Keine Upgrades gefunden!');
+                return;
+            }
+
+            console.log('[LEA Upgrade] Gebäude mit Upgrade gefunden, betrete Gebäude...');
+            arrowBtn.click();
+
+            // Warte bis das Gebäude-Detail offen ist (der Zurück-Button unten links taucht auf)
+            const buildingOpened = await waitForElementToAppear(BACK_BTN_SELECTOR, 3000);
+            if (!buildingOpened) {
+                console.error('[LEA Upgrade] Gebäude hat sich nicht geöffnet.');
+                return;
+            }
+            await new Promise(r => setTimeout(r, 500)); // UI kurz setzen lassen
+
+            // Schritt 3: Alle Upgrades in diesem Gebäude abarbeiten
+            let hasMoreUpgrades = true;
+            let emergencyExitCounter = 0;
+
+            while (hasMoreUpgrades) {
+                hasMoreUpgrades = false;
+                emergencyExitCounter++;
+                if (emergencyExitCounter > 50) {
+                    console.error('[LEA Upgrade] Endlosschleife entdeckt! Breche ab.');
+                    break;
+                }
+
+                // 3.1 Direkte Upgrades prüfen (Ausbauen, Lager erweitern, Linie freischalten)
+                const expandBtn = findExpandButton();
+                if (expandBtn) {
+                    console.log('[LEA Upgrade] Ausbauen/Lager/Unlock-Button gefunden, klicke...');
+                    expandBtn.click();
+                    await handleUpgradeDialog();
+                    hasMoreUpgrades = true;
+                    await new Promise(r => setTimeout(r, 300)); // UI setzen lassen
+                    continue; // Schleife von vorne starten
+                }
+
+                // 3.2 Produktionslinien prüfen (Zahnrad mit grünem Pfeil)
+                const settingsBtn = findSettingsGearWithUpgrade();
+                if (settingsBtn) {
+                    console.log('[LEA Upgrade] Zahnrad mit Upgrade-Pfeil gefunden, betrete Linie...');
+                    settingsBtn.click();
+
+                    // Warte bis Linieneinstellungen offen sind
+                    await waitForElementToAppear('.improvements-entry', 2000);
+                    await new Promise(r => setTimeout(r, 300));
+
+                    // Alle Verbesserungen innerhalb dieser Linie abarbeiten
+                    let hasMoreLineUpgrades = true;
+                    let lineEmergencyCounter = 0;
+                    while (hasMoreLineUpgrades) {
+                        lineEmergencyCounter++;
+                        if (lineEmergencyCounter > 20) break;
+
+                        const improvementBtn = findImprovementButton();
+                        if (improvementBtn) {
+                            console.log('[LEA Upgrade] Gelber Verbesserungs-Button gefunden, klicke...');
+                            improvementBtn.click();
+                            await handleUpgradeDialog();
+                            await new Promise(r => setTimeout(r, 300));
+                        } else {
+                            hasMoreLineUpgrades = false;
+                        }
+                    }
+
+                    // Fertig mit dieser Linie -> Gehe zurück in die Gebäude-Übersicht
+                    const backBtn = document.querySelector(BACK_BTN_SELECTOR);
+                    if (backBtn) {
+                        console.log('[LEA Upgrade] Verlasse Linieneinstellungen...');
+                        backBtn.click();
+                        await waitForElementToDisappear('.improvements-entry', 2000);
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+
+                    hasMoreUpgrades = true;
+                    continue; // Schleife von vorne starten
+                }
+
+                // 3.3 Andere Reiter prüfen (Lager, Fahrzeuge) falls es dort ein Upgrade gibt
+                const otherTab = findTabWithUpgrade();
+                if (otherTab) {
+                    console.log('[LEA Upgrade] Upgrade in anderem Reiter gefunden, wechsle Ansicht...');
+                    otherTab.click();
+                    await new Promise(r => setTimeout(r, 600)); // Warte auf Tab-Wechsel
+                    hasMoreUpgrades = true;
+                    continue;
+                }
+            }
+
+            // Schritt 4: Gebäude komplett fertig -> Zurück zur Upgrade-Liste
+            console.log('[LEA Upgrade] Kein weiteres Upgrade im Gebäude, klicke Zurück zur Liste...');
+            const backBtn = document.querySelector(BACK_BTN_SELECTOR);
+            if (backBtn) {
+                backBtn.click();
+                await waitForElementToDisappear(BACK_BTN_SELECTOR, 3000);
+                await new Promise(r => setTimeout(r, 500)); // Kurz warten bis Liste gerendert ist
+            }
+
+        } catch (e) {
+            console.error('[LEA Upgrade] Fehler im Ablauf:', e);
+        } finally {
+            isUpgrading = false;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // UI: Scan-Button einfügen
     // -----------------------------------------------------------------------
     function injectScanButton() {
-        // Wenn wir nicht auf der Upgrade-Uebersicht sind: Button entfernen falls vorhanden
         if (!isUpgradeOverviewOpen()) {
             const existing = document.getElementById(INJECT_BTN_ID);
             if (existing) existing.remove();
@@ -340,19 +366,17 @@
         const toolbar = filterBar.querySelector('.flex.items-center.justify-between');
         if (!toolbar) return;
 
-        // Such-Button als Referenzpunkt finden
         const searchBtn = toolbar.querySelector('[data-tutorial-id="filter_by_search"]');
         if (!searchBtn) return;
 
         const searchContainer = searchBtn.closest('.relative');
         if (!searchContainer) return;
 
-        // Button erstellen (im gleichen Stil wie die anderen Toolbar-Buttons)
         const btn = document.createElement('button');
         btn.id = INJECT_BTN_ID;
         btn.type = 'button';
         btn.className = 'bb-base-button variant--neutral size--md theme--light';
-        btn.title = 'Naechstes verfuegbares Upgrade anklicken';
+        btn.title = 'Nächstes verfügbares Upgrade anklicken';
         Object.assign(btn.style, {
             marginRight: '8px',
             padding: '0 12px'
@@ -370,74 +394,36 @@
         inner.textContent = 'Auto\nUpgrade';
         btn.appendChild(inner);
 
+        // Klick auf den Button startet den Async-Ablauf!
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-
-            // Finde eine sichtbare Gebaeude-Karte als Ankerpunkt
-            const anchorCard = document.querySelector('[class*="building-card"]');
-            if (anchorCard) {
-                // Finde den scrollbaren Container, in dem die Karten liegen
-                let scrollContainer = anchorCard.parentElement;
-                while (scrollContainer && scrollContainer !== document.body) {
-                    const style = window.getComputedStyle(scrollContainer);
-                    if (style.overflowY === 'auto' || style.overflowY === 'scroll' || scrollContainer.classList.contains('scroll')) {
-                        console.log('[LEA Upgrade] Scrolle Liste nach oben, um virtuelle Elemente zu laden...');
-                        scrollContainer.scrollTop = 0;
-                        break;
-                    }
-                    scrollContainer = scrollContainer.parentElement;
-                }
-
-                // 300ms warten, damit das Framework (Virtual Scrolling) die oberen HTML-Elemente rendern kann
-                setTimeout(() => {
-                    if (!clickNextAvailableUpgrade()) {
-                        showToast('Kein weiteres Upgrade verfügbar!');
-                    }
-                }, 300);
-            } else {
-                // Fallback, falls gerade gar keine Karte gefunden wurde
-                if (!clickNextAvailableUpgrade()) {
-                    showToast('Keine Upgrades gefunden!');
-                }
-            }
+            executeAutoUpgrade();
         });
 
-        // Button vor dem Such-Container einfuegen
         searchContainer.parentNode.insertBefore(btn, searchContainer);
-        console.log('[LEA Upgrade] Scan-Button eingefuegt.');
     }
 
     // -----------------------------------------------------------------------
     // INIT
     // -----------------------------------------------------------------------
     function init() {
-        console.log('[LEA Upgrade Search and Accept] Initialisiert v1.2.0 (mit MutationObserver)');
+        console.log('[LEA Upgrade Search and Accept] Initialisiert v1.3.0 (mit MutationObserver)');
 
-        // Einmaliger initialer Durchlauf beim Start
         injectScanButton();
-        scanDialogs();
-        clickUpgradeInBuilding();
-        clickImprovementArrowButtons();
-        clickExpandButtons();
-        clickBackWhenDone();
 
         let isHandlingMutations = false;
         const observer = new MutationObserver(() => {
             if (!isHandlingMutations) {
                 isHandlingMutations = true;
                 requestAnimationFrame(() => {
+                    // Der Observer ist nur noch dafür da, den Button am Leben zu erhalten
                     injectScanButton();
-                    scanDialogs();
-                    clickUpgradeInBuilding();
-                    clickImprovementArrowButtons();
-                    clickExpandButtons();
-                    clickBackWhenDone();
                     isHandlingMutations = false;
                 });
             }
         });
 
-        observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     if (document.readyState === 'loading') {
