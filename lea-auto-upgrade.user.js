@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         LEA Upgrade Search and Accept
+// @name         LEA Auto Upgrade
 // @namespace    le-tools
 // @version      1.3.0
 // @match        https://game.logistics-empire.com/*
