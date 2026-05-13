@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         LEA Auto Upgrade
 // @namespace    le-tools
-// @version      1.3.0
+// @version      1.3.1
 // @match        https://game.logistics-empire.com/*
-// @description  Sucht Gebaeude mit verfuegbaren Upgrades und klickt sie an. Bestaetigt Upgrade-Dialoge automatisch.
+// @description  Startet einen automatischen Durchlauf über alle Gebäude mit verfügbaren Upgrades und schließt diese ab.
 // @run-at       document-idle
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/XschlexX/Logistics-Empire-Scripts/main/lea-upgrade-search-and-accept.user.js
@@ -225,121 +225,135 @@
         try {
             console.log('[LEA Upgrade] Starte Auto-Upgrade Ablauf...');
 
-            // Schritt 1: Liste nach oben scrollen, damit Virtual Scrolling alle Elemente lädt
-            const anchorCard = document.querySelector('[class*="building-card"]');
-            if (anchorCard) {
-                let scrollContainer = anchorCard.parentElement;
-                while (scrollContainer && scrollContainer !== document.body) {
-                    const style = window.getComputedStyle(scrollContainer);
-                    if (style.overflowY === 'auto' || style.overflowY === 'scroll' || scrollContainer.classList.contains('scroll')) {
-                        scrollContainer.scrollTop = 0;
-                        break;
+            let hasMoreBuildings = true;
+
+            while (hasMoreBuildings) {
+                // Schritt 1: Liste nach oben scrollen, damit Virtual Scrolling alle Elemente lädt
+                const anchorCard = document.querySelector('[class*="building-card"]');
+                if (anchorCard) {
+                    let scrollContainer = anchorCard.parentElement;
+                    while (scrollContainer && scrollContainer !== document.body) {
+                        const style = window.getComputedStyle(scrollContainer);
+                        if (style.overflowY === 'auto' || style.overflowY === 'scroll' || scrollContainer.classList.contains('scroll')) {
+                            scrollContainer.scrollTop = 0;
+                            break;
+                        }
+                        scrollContainer = scrollContainer.parentElement;
                     }
-                    scrollContainer = scrollContainer.parentElement;
+                    await new Promise(r => setTimeout(r, 300)); // Kurz warten auf DOM Rendering
                 }
-                await new Promise(r => setTimeout(r, 300)); // Kurz warten auf DOM Rendering
-            }
 
-            // Schritt 2: Nächstes Gebäude suchen und reingehen
-            const arrowBtn = findNextAvailableBuildingArrow();
-            if (!arrowBtn) {
-                showToast('Keine Upgrades gefunden!');
-                return;
-            }
-
-            console.log('[LEA Upgrade] Gebäude mit Upgrade gefunden, betrete Gebäude...');
-            arrowBtn.click();
-
-            // Warte bis das Gebäude-Detail offen ist (der Zurück-Button unten links taucht auf)
-            const buildingOpened = await waitForElementToAppear(BACK_BTN_SELECTOR, 3000);
-            if (!buildingOpened) {
-                console.error('[LEA Upgrade] Gebäude hat sich nicht geöffnet.');
-                return;
-            }
-            await new Promise(r => setTimeout(r, 500)); // UI kurz setzen lassen
-
-            // Schritt 3: Alle Upgrades in diesem Gebäude abarbeiten
-            let hasMoreUpgrades = true;
-            let emergencyExitCounter = 0;
-
-            while (hasMoreUpgrades) {
-                hasMoreUpgrades = false;
-                emergencyExitCounter++;
-                if (emergencyExitCounter > 50) {
-                    console.error('[LEA Upgrade] Endlosschleife entdeckt! Breche ab.');
+                // Schritt 2: Nächstes Gebäude suchen und reingehen
+                const arrowBtn = findNextAvailableBuildingArrow();
+                if (!arrowBtn) {
+                    showToast('Alle Upgrades abgeschlossen!');
+                    hasMoreBuildings = false;
                     break;
                 }
 
-                // 3.1 Direkte Upgrades prüfen (Ausbauen, Lager erweitern, Linie freischalten)
-                const expandBtn = findExpandButton();
-                if (expandBtn) {
-                    console.log('[LEA Upgrade] Ausbauen/Lager/Unlock-Button gefunden, klicke...');
-                    expandBtn.click();
-                    await handleUpgradeDialog();
-                    hasMoreUpgrades = true;
-                    await new Promise(r => setTimeout(r, 300)); // UI setzen lassen
-                    continue; // Schleife von vorne starten
+                console.log('[LEA Upgrade] Gebäude mit Upgrade gefunden, betrete Gebäude...');
+                arrowBtn.click();
+
+                // Warte bis wir aus der Übersicht raus sind (Gebäude lädt)
+                const openStartTime = Date.now();
+                while (isUpgradeOverviewOpen()) {
+                    if (Date.now() - openStartTime > 3000) {
+                        console.error('[LEA Upgrade] Gebäude hat sich nicht geöffnet.');
+                        break;
+                    }
+                    await new Promise(r => setTimeout(r, 50));
                 }
+                await new Promise(r => setTimeout(r, 500)); // UI kurz setzen lassen
 
-                // 3.2 Produktionslinien prüfen (Zahnrad mit grünem Pfeil)
-                const settingsBtn = findSettingsGearWithUpgrade();
-                if (settingsBtn) {
-                    console.log('[LEA Upgrade] Zahnrad mit Upgrade-Pfeil gefunden, betrete Linie...');
-                    settingsBtn.click();
+                // Schritt 3: Alle Upgrades in diesem Gebäude abarbeiten
+                let hasMoreUpgrades = true;
+                let emergencyExitCounter = 0;
 
-                    // Warte bis Linieneinstellungen offen sind
-                    await waitForElementToAppear('.improvements-entry', 2000);
-                    await new Promise(r => setTimeout(r, 300));
+                while (hasMoreUpgrades) {
+                    hasMoreUpgrades = false;
+                    emergencyExitCounter++;
+                    if (emergencyExitCounter > 50) {
+                        console.error('[LEA Upgrade] Endlosschleife entdeckt! Breche ab.');
+                        break;
+                    }
 
-                    // Alle Verbesserungen innerhalb dieser Linie abarbeiten
-                    let hasMoreLineUpgrades = true;
-                    let lineEmergencyCounter = 0;
-                    while (hasMoreLineUpgrades) {
-                        lineEmergencyCounter++;
-                        if (lineEmergencyCounter > 20) break;
+                    // 3.1 Direkte Upgrades prüfen (Ausbauen, Lager erweitern, Linie freischalten)
+                    const expandBtn = findExpandButton();
+                    if (expandBtn) {
+                        console.log('[LEA Upgrade] Ausbauen/Lager/Unlock-Button gefunden, klicke...');
+                        expandBtn.click();
+                        await handleUpgradeDialog();
+                        hasMoreUpgrades = true;
+                        await new Promise(r => setTimeout(r, 300)); // UI setzen lassen
+                        continue; // Schleife von vorne starten
+                    }
 
-                        const improvementBtn = findImprovementButton();
-                        if (improvementBtn) {
-                            console.log('[LEA Upgrade] Gelber Verbesserungs-Button gefunden, klicke...');
-                            improvementBtn.click();
-                            await handleUpgradeDialog();
-                            await new Promise(r => setTimeout(r, 300));
-                        } else {
-                            hasMoreLineUpgrades = false;
+                    // 3.2 Produktionslinien prüfen (Zahnrad mit grünem Pfeil)
+                    const settingsBtn = findSettingsGearWithUpgrade();
+                    if (settingsBtn) {
+                        console.log('[LEA Upgrade] Zahnrad mit Upgrade-Pfeil gefunden, betrete Linie...');
+                        settingsBtn.click();
+
+                        // Warte bis Linieneinstellungen offen sind
+                        await waitForElementToAppear('.improvements-entry', 2000);
+                        await new Promise(r => setTimeout(r, 300));
+
+                        // Alle Verbesserungen innerhalb dieser Linie abarbeiten
+                        let hasMoreLineUpgrades = true;
+                        let lineEmergencyCounter = 0;
+                        while (hasMoreLineUpgrades) {
+                            lineEmergencyCounter++;
+                            if (lineEmergencyCounter > 20) break;
+
+                            const improvementBtn = findImprovementButton();
+                            if (improvementBtn) {
+                                console.log('[LEA Upgrade] Gelber Verbesserungs-Button gefunden, klicke...');
+                                improvementBtn.click();
+                                await handleUpgradeDialog();
+                                await new Promise(r => setTimeout(r, 300));
+                            } else {
+                                hasMoreLineUpgrades = false;
+                            }
                         }
+
+                        // Fertig mit dieser Linie -> Gehe zurück in die Gebäude-Übersicht
+                        const backBtn = document.querySelector(BACK_BTN_SELECTOR);
+                        if (backBtn) {
+                            console.log('[LEA Upgrade] Verlasse Linieneinstellungen...');
+                            backBtn.click();
+                            await waitForElementToDisappear('.improvements-entry', 2000);
+                            await new Promise(r => setTimeout(r, 500));
+                        }
+
+                        hasMoreUpgrades = true;
+                        continue; // Schleife von vorne starten
                     }
 
-                    // Fertig mit dieser Linie -> Gehe zurück in die Gebäude-Übersicht
-                    const backBtn = document.querySelector(BACK_BTN_SELECTOR);
-                    if (backBtn) {
-                        console.log('[LEA Upgrade] Verlasse Linieneinstellungen...');
-                        backBtn.click();
-                        await waitForElementToDisappear('.improvements-entry', 2000);
-                        await new Promise(r => setTimeout(r, 500));
+                    // 3.3 Andere Reiter prüfen (Lager, Fahrzeuge) falls es dort ein Upgrade gibt
+                    const otherTab = findTabWithUpgrade();
+                    if (otherTab) {
+                        console.log('[LEA Upgrade] Upgrade in anderem Reiter gefunden, wechsle Ansicht...');
+                        otherTab.click();
+                        await new Promise(r => setTimeout(r, 600)); // Warte auf Tab-Wechsel
+                        hasMoreUpgrades = true;
+                        continue;
                     }
-
-                    hasMoreUpgrades = true;
-                    continue; // Schleife von vorne starten
                 }
 
-                // 3.3 Andere Reiter prüfen (Lager, Fahrzeuge) falls es dort ein Upgrade gibt
-                const otherTab = findTabWithUpgrade();
-                if (otherTab) {
-                    console.log('[LEA Upgrade] Upgrade in anderem Reiter gefunden, wechsle Ansicht...');
-                    otherTab.click();
-                    await new Promise(r => setTimeout(r, 600)); // Warte auf Tab-Wechsel
-                    hasMoreUpgrades = true;
-                    continue;
+                // Schritt 4: Gebäude komplett fertig -> Zurück zur Upgrade-Liste
+                console.log('[LEA Upgrade] Kein weiteres Upgrade im Gebäude, klicke Zurück zur Liste...');
+                const backBtn = document.querySelector(BACK_BTN_SELECTOR);
+                if (backBtn) {
+                    backBtn.click();
+                    
+                    // Wir warten darauf, dass die Upgrade-Übersicht wieder aktiv ist
+                    const backStartTime = Date.now();
+                    while (!isUpgradeOverviewOpen()) {
+                        if (Date.now() - backStartTime > 3000) break;
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                    await new Promise(r => setTimeout(r, 500)); // Kurz warten bis Liste gerendert ist
                 }
-            }
-
-            // Schritt 4: Gebäude komplett fertig -> Zurück zur Upgrade-Liste
-            console.log('[LEA Upgrade] Kein weiteres Upgrade im Gebäude, klicke Zurück zur Liste...');
-            const backBtn = document.querySelector(BACK_BTN_SELECTOR);
-            if (backBtn) {
-                backBtn.click();
-                await waitForElementToDisappear(BACK_BTN_SELECTOR, 3000);
-                await new Promise(r => setTimeout(r, 500)); // Kurz warten bis Liste gerendert ist
             }
 
         } catch (e) {
@@ -407,7 +421,7 @@
     // INIT
     // -----------------------------------------------------------------------
     function init() {
-        console.log('[LEA Upgrade Search and Accept] Initialisiert v1.3.0 (mit MutationObserver)');
+        console.log('[LEA Upgrade Search and Accept] Initialisiert v1.3.1 (Voll-Automatikmodus)');
 
         injectScanButton();
 
