@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         LEA Custom Filter (Stop)
+// @name         LEA Custom Filter
 // @namespace    le-tools
 // @version      1.0.0
 // @match        https://game.logistics-empire.com/*
@@ -162,9 +162,9 @@
             textAlign: 'center',
             lineHeight: '1.1'
         });
-        
+
         inner.textContent = 'Custom';
-        
+
         // Pfeil-Icon hinzufügen für Dropdown-Indikator
         const arrow = document.createElement('span');
         arrow.textContent = ' ▼';
@@ -184,7 +184,7 @@
         dropdown.style.marginTop = '4px';
         dropdown.style.zIndex = '1001';
         dropdown.style.minWidth = '260px'; // Etwas breiter für die Toggle-Switches
-        
+
         // Klassen vom Original-Dropdown (blaue Box)
         dropdown.className = 'p-popover p-component bb-filter-popover rounded-lg border-1 border-content-box-outline bg-container-bg-b bg-(image:--background-gradient-card-info) shadow-(--shadow-generic)';
 
@@ -203,10 +203,10 @@
         function createFilterItem(id, labelText, emojiIcon, isActive, onClick) {
             const item = document.createElement('div');
             item.className = 'flex cursor-pointer items-center gap-1.5 select-none';
-            
+
             const toggleBgClass = isActive ? 'bg-toggle-bg-on border-toggle-outline-on' : 'bg-toggle-bg-off border-toggle-outline-off';
             const toggleDotClass = isActive ? 'bg-toggle-on translate-x-[24px]' : 'bg-toggle-off translate-x-0';
-            
+
             item.innerHTML = `
                 <div class="size-9 shrink-0 flex items-center justify-center text-xl">${emojiIcon}</div>
                 <span class="text-p1-500 flex-1">${labelText}</span>
@@ -214,12 +214,12 @@
                     <div class="absolute top-[2px] left-[2px] aspect-square h-[18px] rounded-full transition duration-150 ease-in-out ${toggleDotClass}"></div>
                 </div>
             `;
-            
+
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 onClick();
             });
-            
+
             return item;
         }
 

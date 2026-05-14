@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         LEA Auto Fill Goods (Gleichmäßig Auffüllen)
+// @name         LEA Auto Fill Goods
 // @namespace    http://tampermonkey.net/
 // @version      1.0.1
 // @description  Füllt Waren im Lager gleichmäßig bis zur maximalen Kapazität auf.
@@ -105,15 +105,15 @@
             for (let i = 0; i < 6; i++) {
                 targets.forEach(t => {
                     t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, which: 8, bubbles: true, cancelable: true }));
-                    t.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Backspace', code: 'Backspace', keyCode: 8, which: 8, bubbles: true, cancelable: true }));
+                    t.dispatchEvent(new KeyboardEvent('keyup', { key: 'Backspace', code: 'Backspace', keyCode: 8, which: 8, bubbles: true, cancelable: true }));
                 });
             }
             for (const char of str) {
                 const keyCode = char.charCodeAt(0);
                 targets.forEach(t => {
-                    t.dispatchEvent(new KeyboardEvent('keydown',  { key: char, code: 'Digit' + char, keyCode, which: keyCode, bubbles: true, cancelable: true }));
+                    t.dispatchEvent(new KeyboardEvent('keydown', { key: char, code: 'Digit' + char, keyCode, which: keyCode, bubbles: true, cancelable: true }));
                     t.dispatchEvent(new KeyboardEvent('keypress', { key: char, code: 'Digit' + char, keyCode, which: keyCode, charCode: keyCode, bubbles: true, cancelable: true }));
-                    t.dispatchEvent(new KeyboardEvent('keyup',    { key: char, code: 'Digit' + char, keyCode, which: keyCode, bubbles: true, cancelable: true }));
+                    t.dispatchEvent(new KeyboardEvent('keyup', { key: char, code: 'Digit' + char, keyCode, which: keyCode, bubbles: true, cancelable: true }));
                 });
             }
         }
@@ -121,7 +121,7 @@
         // Enter: Wert committen
         [element, document].forEach(t => {
             t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
-            t.dispatchEvent(new KeyboardEvent('keyup',   { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+            t.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
         });
         await wait(30);
     }
@@ -192,7 +192,7 @@
 
         console.log(`[LEA Auto Fill] Gefunden: ${numTypes} Sorten, Ziel: ${targetPerType} pro Sorte.`);
         console.log(`[LEA Auto Fill] MAX-Ware (links/meiste): ${maxGoodName}`);
-        goodsInfo.forEach(g => console.log(`  ${g.imgSrc.split('/').pop().replace('.avif','')} aktuell=${g.currentAmount}, fehlt=${g.missingAmount}`));
+        goodsInfo.forEach(g => console.log(`  ${g.imgSrc.split('/').pop().replace('.avif', '')} aktuell=${g.currentAmount}, fehlt=${g.missingAmount}`));
 
         // 4. Fehlmengen-Map aufbauen – NUR für Sorten, die eingetippt werden (nicht MAX-Ware)
         const remaining = {};
@@ -200,7 +200,7 @@
             if (good.imgSrc === maxGoodSrc) continue; // MAX-Ware wird per Button gefüllt
             if (good.missingAmount > 0) {
                 remaining[good.imgSrc] = good.missingAmount;
-                console.log(`[LEA Auto Fill] Sorte benötigt ${good.missingAmount} Stück: ${good.imgSrc.split('/').pop().replace('.avif','')}`);
+                console.log(`[LEA Auto Fill] Sorte benötigt ${good.missingAmount} Stück: ${good.imgSrc.split('/').pop().replace('.avif', '')}`);
             }
         }
 
@@ -258,7 +258,7 @@
         // Dann iterieren wir über die Lieferanten der MAX-Ware, bis der Bedarf gedeckt ist.
         let maxButtonClicked = false;
         let maxGoodRemaining = maxGood.missingAmount;
-        
+
         for (const inputContainer of allInputContainers) {
             if (maxGoodRemaining <= 0) break; // Bedarf bereits gedeckt
 
@@ -293,7 +293,7 @@
 
         // Auswertung
         for (const [src, rest] of Object.entries(remaining)) {
-            if (rest > 0) console.warn(`[LEA Auto Fill] Noch ${rest} fehlend für "${src.split('/').pop().replace('.avif','')}" – kein Lieferant mit ausreichend Bestand.`);
+            if (rest > 0) console.warn(`[LEA Auto Fill] Noch ${rest} fehlend für "${src.split('/').pop().replace('.avif', '')}" – kein Lieferant mit ausreichend Bestand.`);
         }
         if (!maxButtonClicked) console.warn(`[LEA Auto Fill] MAX-Button für "${maxGoodName}" nicht gefunden!`);
 
