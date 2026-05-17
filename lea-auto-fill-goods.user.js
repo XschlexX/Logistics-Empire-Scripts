@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LEA Auto Fill Goods
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  Füllt Waren im Lager gleichmäßig bis zur maximalen Kapazität auf.
 // @author       DonSanchos
 // @match        *://*.logistics-empire.com/*
@@ -218,6 +218,36 @@
 
         const allInputContainers = Array.from(document.querySelectorAll(INPUT_CONTAINER_SELECTOR));
         console.log(`[LEA Auto Fill] ${allInputContainers.length} Lieferanten-Eingabefelder gefunden.`);
+
+        // Zentrallager (ZL) priorisieren
+        function isZLCenter(inputContainer) {
+            let el = inputContainer;
+            for (let i = 0; i < 10; i++) {
+                if (!el) break;
+                // Verhindern, dass wir im Parent der gesamten Liste suchen
+                if (allInputContainers.length > 1 && el.querySelectorAll(INPUT_CONTAINER_SELECTOR).length === allInputContainers.length) {
+                    break;
+                }
+                if (el.textContent.includes('(ZL)')) {
+                    return true;
+                }
+                el = el.parentElement;
+            }
+            return false;
+        }
+
+        allInputContainers.sort((a, b) => {
+            const aIsZL = isZLCenter(a);
+            const bIsZL = isZLCenter(b);
+            if (aIsZL && !bIsZL) return -1;
+            if (!aIsZL && bIsZL) return 1;
+            return 0;
+        });
+
+        const zlCount = allInputContainers.filter(isZLCenter).length;
+        if (zlCount > 0) {
+            console.log(`[LEA Auto Fill] ${zlCount} Zentrallager (ZL) priorisiert.`);
+        }
 
         // ── Phase 1: Fehlmengen eintippen (MAX-Ware komplett überspringen) ──
         for (const inputContainer of allInputContainers) {

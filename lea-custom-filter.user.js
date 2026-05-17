@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LEA Custom Filter
 // @namespace    le-tools
-// @version      1.0.0
+// @version      1.0.2
 // @match        https://game.logistics-empire.com/*
 // @description  Fügt einen Filter in der Gebäudeübersicht hinzu, um nur Gebäude mit gestoppter Produktionslinie anzuzeigen.
 // @run-at       document-idle
@@ -16,6 +16,7 @@
     // -----------------------------------------------------------------------
     const FILTER_BAR_SELECTOR = '.bb-filter-and-sort-bar';
     const INJECT_BTN_ID = 'lea-custom-stop-filter-btn';
+    const NEXT_BTN_ID  = 'lea-custom-next-btn';
     const BUILDING_CARD_SELECTOR = '.building-card';
     const STOP_ICON_SELECTOR = 'img[src*="icon_blocked"]';
 
@@ -24,6 +25,11 @@
         paused: false,
         fusion: false
     };
+
+    // Auto-Scroll Zustand
+    let scrollRafId       = null;
+    let lastMatchScrollTop = null; // scrollTop-Wert, bei dem der letzte Treffer oben lag
+    let lastMatchHeight    = 200;  // Höhe des letzten Treffer-Gebäudes (Schätzwert als Fallback)
 
     // -----------------------------------------------------------------------
     // GLOBALER KLICK-LISTENER (für Dropdown)
@@ -49,15 +55,32 @@
         return !!document.querySelector(FILTER_BAR_SELECTOR);
     }
 
+    // -----------------------------------------------------------------------
+    // FILTER-LOGIK
+    // -----------------------------------------------------------------------
+
+    /** Prüft, ob ein einzelnes Gebäude die aktuell aktiven Filter erfüllt. */
+    function matchesFilter(building) {
+        if (activeFilters.paused && building.querySelector(STOP_ICON_SELECTOR)) {
+            return true;
+        }
+        if (activeFilters.fusion) {
+            const labels = building.querySelectorAll('.bb-label-container');
+            for (const label of labels) {
+                if (label.textContent.includes('Fusion im Gange')) return true;
+            }
+        }
+        return false;
+    }
+
     function applyFilter() {
         if (!isBuildingOverviewOpen()) return;
 
         const buildings = Array.from(document.querySelectorAll(BUILDING_CARD_SELECTOR));
+        const hasAnyFilterActive = Object.values(activeFilters).some(v => v);
 
         for (let i = 0; i < buildings.length; i++) {
             const building = buildings[i];
-
-            const hasAnyFilterActive = Object.values(activeFilters).some(v => v);
 
             if (!hasAnyFilterActive) {
                 // Wenn kein Filter aktiv, zeige alle normal an
@@ -65,44 +88,184 @@
                 building.style.pointerEvents = '';
                 building.style.filter = '';
                 building.style.boxShadow = 'none';
+            } else if (matchesFilter(building)) {
+                // Gebäude erfüllt Filter -> Hervorheben
+                building.style.opacity = '1';
+                building.style.pointerEvents = 'auto';
+                building.style.filter = 'none';
+                building.style.boxShadow = '0 0 15px rgba(255, 0, 0, 0.8)';
             } else {
-                let shouldShow = false;
-
-                // 1. Filter: Produktion pausiert
-                if (activeFilters.paused) {
-                    const hasStopSign = building.querySelector(STOP_ICON_SELECTOR);
-                    if (hasStopSign) {
-                        shouldShow = true;
-                    }
-                }
-
-                // 2. Filter: Fusion im Gange
-                if (activeFilters.fusion) {
-                    const labels = building.querySelectorAll('.bb-label-container');
-                    for (const label of labels) {
-                        if (label.textContent.includes('Fusion im Gange')) {
-                            shouldShow = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (shouldShow) {
-                    // Gebäude erfüllt alle aktiven Filter -> Hervorheben
-                    building.style.opacity = '1';
-                    building.style.pointerEvents = 'auto';
-                    building.style.filter = 'none';
-                    // Optional: einen Rahmen setzen, um es noch besser hervorzuheben
-                    building.style.boxShadow = '0 0 15px rgba(255, 0, 0, 0.8)';
-                } else {
-                    // Gebäude erfüllt nicht alle Filter -> "Ghosting" (stark abdunkeln, nicht klickbar)
-                    building.style.opacity = '0.15';
-                    building.style.pointerEvents = 'none';
-                    building.style.filter = 'grayscale(100%)';
-                    building.style.boxShadow = 'none';
-                }
+                // Gebäude erfüllt Filter nicht -> "Ghosting"
+                building.style.opacity = '0.15';
+                building.style.pointerEvents = 'none';
+                building.style.filter = 'grayscale(100%)';
+                building.style.boxShadow = 'none';
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // AUTO-SCROLL: Scrollt zur ersten Übereinstimmung
+    // -----------------------------------------------------------------------
+
+    /** Findet den scrollbaren Eltern-Container der Gebäudeliste. */
+    function getScrollContainer() {
+        const card = document.querySelector(BUILDING_CARD_SELECTOR);
+        if (!card) return null;
+        let el = card.parentElement;
+        while (el && el !== document.body) {
+            if (el.scrollHeight > el.clientHeight + 5) return el;
+            el = el.parentElement;
+        }
+        return null;
+    }
+
+    /** Stoppt einen laufenden Auto-Scroll und entfernt den Weiter-Button. */
+    function stopAutoScroll() {
+        if (scrollRafId !== null) {
+            cancelAnimationFrame(scrollRafId);
+            scrollRafId = null;
+        }
+        const nextBtn = document.getElementById(NEXT_BTN_ID);
+        if (nextBtn) nextBtn.remove();
+        lastMatchScrollTop = null;
+    }
+
+    /**
+     * Zeigt einen kleinen "▼ Weiter"-Button neben dem Custom-Button an.
+     * Wird nach jedem gefundenen Treffer aufgerufen.
+     */
+    function injectNextButton() {
+        // Alten Button entfernen (verhindert Duplikate)
+        const old = document.getElementById(NEXT_BTN_ID);
+        if (old) old.remove();
+
+        const buildingTypeDiv = document.querySelector('[data-tutorial-id="filter_by_building_type"]');
+        if (!buildingTypeDiv) return;
+
+        const btn = document.createElement('button');
+        btn.id        = NEXT_BTN_ID;
+        btn.type      = 'button';
+        btn.title     = 'Zum nächsten Treffer scrollen';
+        btn.className = 'bb-base-button size--md theme--light variant--neutral';
+        btn.style.padding = '0 10px';
+        btn.style.border  = '2px solid red';
+        btn.style.backgroundColor = '#ffe6e6';
+
+        const inner = document.createElement('div');
+        inner.className = 'relative flex size-full items-center justify-center';
+        Object.assign(inner.style, {
+            fontSize:   '13px',
+            fontWeight: 'bold',
+            color:      'red',
+            gap:        '4px',
+        });
+        inner.textContent = '▼ Weiter';
+
+        btn.appendChild(inner);
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            scrollToNextMatch();
+        });
+
+        buildingTypeDiv.appendChild(btn);
+    }
+
+    /** Startet die Suche ab direkt unterhalb des letzten Treffers. */
+    function scrollToNextMatch() {
+        if (lastMatchScrollTop === null) return;
+        startAutoScroll(lastMatchScrollTop + lastMatchHeight + 2);
+    }
+
+    /**
+     * Scrollt die Gebäudeliste schrittweise nach unten, bis ein passendes
+     * Gebäude im DOM erscheint (Virtual Scrolling), und springt dann direkt hin.
+     *
+     * @param {number|null} fromScrollTop  Wenn angegeben, startet die Suche ab dieser
+     *                                     scrollTop-Position statt von Anfang (für "Weiter").
+     */
+    function startAutoScroll(fromScrollTop = null) {
+        stopAutoScroll();
+        if (!Object.values(activeFilters).some(v => v)) return;
+
+        const cont0 = getScrollContainer();
+        if (!cont0) return;
+
+        if (fromScrollTop !== null) {
+            // Suche ab einer bestimmten Position ("Weiter")
+            cont0.scrollTop = fromScrollTop;
+        } else {
+            // Frische Suche: von oben beginnen, Zustand zurücksetzen
+            lastMatchScrollTop = null;
+            cont0.scrollTop = 0;
+        }
+
+        let lastScrollTopVal  = -1;
+        let stepsWithoutChange = 0;
+        const SCROLL_STEP = 300; // px pro Schritt
+        const MAX_STALL   = 5;   // Frames ohne Fortschritt -> Abbruch
+
+        function step() {
+            const cont = getScrollContainer();
+            if (!cont) return; // Container verschwunden (Menüwechsel)
+
+            const contRect = cont.getBoundingClientRect();
+
+            // Erstes passendes Gebäude suchen, dessen Oberkante
+            // sich am oder unterhalb des Container-Oberrands befindet
+            // (verhindert, dass ein bereits besuchter Treffer erneut gefunden wird)
+            let match = null;
+            for (const card of document.querySelectorAll(BUILDING_CARD_SELECTOR)) {
+                if (!matchesFilter(card)) continue;
+                if (card.getBoundingClientRect().top >= contRect.top - 5) {
+                    match = card;
+                    break;
+                }
+            }
+
+            if (match) {
+                // Treffer bündig am oberen Container-Rand positionieren
+                const matchTop      = match.getBoundingClientRect().top;
+                const targetScrollTop = cont.scrollTop + (matchTop - contRect.top);
+                cont.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+
+                // Position und Höhe für "Weiter" merken
+                lastMatchScrollTop = targetScrollTop;
+                lastMatchHeight    = match.offsetHeight || 200;
+
+                scrollRafId = null;
+                injectNextButton(); // "▼ Weiter"-Button einblenden
+                return;
+            }
+
+            // Am Ende der Liste?
+            const atBottom = cont.scrollTop + cont.clientHeight >= cont.scrollHeight - 10;
+            if (atBottom) {
+                scrollRafId = null;
+                return;
+            }
+
+            // Stall-Detektion
+            if (cont.scrollTop === lastScrollTopVal) {
+                stepsWithoutChange++;
+                if (stepsWithoutChange >= MAX_STALL) { scrollRafId = null; return; }
+            } else {
+                stepsWithoutChange = 0;
+            }
+
+            lastScrollTopVal = cont.scrollTop;
+            cont.scrollTop  += SCROLL_STEP;
+
+            // Kurze Pause, damit das Spiel neue Gebäude rendern kann
+            scrollRafId = setTimeout(() => {
+                scrollRafId = requestAnimationFrame(step);
+            }, 80);
+        }
+
+        // Kleinen Moment warten, bis das Spiel nach dem Scroll-Reset rendert
+        scrollRafId = setTimeout(() => {
+            scrollRafId = requestAnimationFrame(step);
+        }, 150);
     }
 
     // -----------------------------------------------------------------------
@@ -238,6 +401,7 @@
         const itemStop = createFilterItem('stop', 'Produktion pausiert', '🛑', activeFilters.paused, () => {
             activeFilters.paused = !activeFilters.paused;
             applyFilter();
+            if (activeFilters.paused) startAutoScroll(); else stopAutoScroll();
             container.remove();
             injectFilterButton();
         });
@@ -250,6 +414,7 @@
         const itemFusion = createFilterItem('fusion', 'Fusion im Gange', '🔄', activeFilters.fusion, () => {
             activeFilters.fusion = !activeFilters.fusion;
             applyFilter();
+            if (activeFilters.fusion) startAutoScroll(); else stopAutoScroll();
             container.remove();
             injectFilterButton();
         });
@@ -277,7 +442,7 @@
     // INIT & OBSERVER
     // -----------------------------------------------------------------------
     function init() {
-        console.log('[LEA Custom Filter] Initialisiert v1.0.0 (Stop-Schild Filter)');
+        console.log('[LEA Custom Filter] Initialisiert v1.0.2 (Next-Button)');
 
         injectFilterButton();
         applyFilter();
